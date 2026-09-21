@@ -1,0 +1,150 @@
+{
+  "status": "FAILED",
+  "verdict": "FAIL",
+  "score": 40,
+  "dynamic_agent_telemetry": [
+    {
+      "stage": "DYNAMIC AGENT SELECTION",
+      "message": "Stage [PLANNER] resolved to agent [PLANNER] (score: 4.13, capabilities: ['planning', 'roadmapping', 'task-decomposition', 'risk-analysis'])",
+      "time": "13:56:00"
+    },
+    {
+      "stage": "DYNAMIC AGENT SELECTION",
+      "message": "Stage [SPECIFICATION] resolved to agent [SPECIFICATION] (score: 4.11, capabilities: ['spec-writing', 'api-contracts', 'requirements-analysis', 'acceptance-criteria'])",
+      "time": "13:59:58"
+    },
+    {
+      "stage": "DYNAMIC AGENT SELECTION",
+      "message": "Stage [ARCHITECTURE] resolved to agent [ARCHITECTURE] (score: 4.25, capabilities: ['software-architecture', 'system-design', 'component-hierarchy', 'seam-design'])",
+      "time": "14:00:28"
+    },
+    {
+      "stage": "DYNAMIC AGENT SELECTION",
+      "message": "Stage [CODER] resolved to agent [CODER] (score: 3.10, capabilities: ['code-generation', 'refactoring', 'frontend', 'backend', 'general-coding'])",
+      "time": "14:01:52"
+    },
+    {
+      "stage": "DYNAMIC AGENT SELECTION",
+      "message": "Stage [TESTER] resolved to agent [TESTER] (score: 3.10, capabilities: ['testing', 'tdd', 'unit-tests', 'integration-tests', 'terminal-execution'])",
+      "time": "14:13:47"
+    },
+    {
+      "stage": "DYNAMIC AGENT SELECTION",
+      "message": "Stage [REVIEWER] resolved to agent [REVIEWER] (score: 3.45, capabilities: ['code-review', 'quality-audit', 'standards-compliance', 'rubric-scoring'])",
+      "time": "14:20:49"
+    },
+    {
+      "stage": "DYNAMIC AGENT SELECTION",
+      "message": "Stage [CODER] resolved to agent [CODER] (score: 3.10, capabilities: ['code-generation', 'refactoring', 'frontend', 'backend', 'general-coding'])",
+      "time": "14:26:29"
+    },
+    {
+      "stage": "DYNAMIC AGENT SELECTION",
+      "message": "Stage [TESTER] resolved to agent [TESTER] (score: 3.10, capabilities: ['testing', 'tdd', 'unit-tests', 'integration-tests', 'terminal-execution'])",
+      "time": "14:26:51"
+    },
+    {
+      "stage": "DYNAMIC AGENT SELECTION",
+      "message": "Stage [REVIEWER] resolved to agent [REVIEWER] (score: 3.45, capabilities: ['code-review', 'quality-audit', 'standards-compliance', 'rubric-scoring'])",
+      "time": "14:28:28"
+    },
+    {
+      "stage": "DYNAMIC AGENT SELECTION",
+      "message": "Stage [CODER] resolved to agent [CODER] (score: 3.10, capabilities: ['code-generation', 'refactoring', 'frontend', 'backend', 'general-coding'])",
+      "time": "14:35:53"
+    },
+    {
+      "stage": "DYNAMIC AGENT SELECTION",
+      "message": "Stage [TESTER] resolved to agent [TESTER] (score: 3.10, capabilities: ['testing', 'tdd', 'unit-tests', 'integration-tests', 'terminal-execution'])",
+      "time": "14:36:30"
+    },
+    {
+      "stage": "DYNAMIC AGENT SELECTION",
+      "message": "Stage [REVIEWER] resolved to agent [REVIEWER] (score: 3.45, capabilities: ['code-review', 'quality-audit', 'standards-compliance', 'rubric-scoring'])",
+      "time": "14:37:30"
+    }
+  ],
+  "skills_telemetry": [
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Discovered JIT skills for [PLANNER]: ['planning-and-task-breakdown', 'incremental-implementation', 'create-implementation-plan']",
+      "time": "13:56:00"
+    },
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Discovered JIT skills for [SPECIFICATION]: ['api-and-interface-design', 'create-implementation-plan', 'agy-customizations']",
+      "time": "13:59:58"
+    },
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Discovered JIT skills for [ARCHITECTURE]: ['agy-customizations', 'create-implementation-plan', 'api-and-interface-design']",
+      "time": "14:00:28"
+    },
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Discovered JIT skills for [CODER]: ['context-engineering', 'create-implementation-plan', 'codebase-design']",
+      "time": "14:01:52"
+    },
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Discovered JIT skills for [TESTER]: ['test-driven-development', 'spec-driven-development', 'create-implementation-plan']",
+      "time": "14:13:47"
+    },
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Discovered JIT skills for [REVIEWER]: ['security-and-hardening', 'context-engineering', 'create-implementation-plan']",
+      "time": "14:20:49"
+    },
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Discovered JIT skills for [CODER]: ['context-engineering', 'create-implementation-plan', 'codebase-design']",
+      "time": "14:26:29"
+    },
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Discovered JIT skills for [TESTER]: ['test-driven-development', 'spec-driven-development', 'create-implementation-plan']",
+      "time": "14:26:51"
+    },
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Discovered JIT skills for [REVIEWER]: ['security-and-hardening', 'context-engineering', 'create-implementation-plan']",
+      "time": "14:28:28"
+    },
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Discovered JIT skills for [CODER]: ['context-engineering', 'create-implementation-plan', 'codebase-design']",
+      "time": "14:35:53"
+    },
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Discovered JIT skills for [TESTER]: ['test-driven-development', 'spec-driven-development', 'create-implementation-plan']",
+      "time": "14:36:30"
+    },
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Discovered JIT skills for [REVIEWER]: ['security-and-hardening', 'context-engineering', 'create-implementation-plan']",
+      "time": "14:37:30"
+    }
+  ],
+  "generated_files": [
+    ".pytest_cache\\.gitignore",
+    ".pytest_cache\\CACHEDIR.TAG",
+    ".pytest_cache\\README.md",
+    ".pytest_cache\\v\\cache\\lastfailed",
+    ".pytest_cache\\v\\cache\\nodeids",
+    "data_engine\\__init__.py",
+    "data_engine\\__pycache__\\__init__.cpython-313.pyc",
+    "data_engine\\__pycache__\\analytics.cpython-313.pyc",
+    "data_engine\\__pycache__\\exporter.cpython-313.pyc",
+    "data_engine\\__pycache__\\validators.cpython-313.pyc",
+    "data_engine\\analytics.py",
+    "data_engine\\exporter.py",
+    "data_engine\\validators.py",
+    "tests\\__pycache__\\test_analytics.cpython-313-pytest-9.1.1.pyc",
+    "tests\\__pycache__\\test_exporter.cpython-313-pytest-9.1.1.pyc",
+    "tests\\__pycache__\\test_validators.cpython-313-pytest-9.1.1.pyc",
+    "tests\\test_analytics.py",
+    "tests\\test_exporter.py",
+    "tests\\test_validators.py"
+  ]
+}

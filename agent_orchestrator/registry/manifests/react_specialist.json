@@ -1,0 +1,27 @@
+{
+  "name": "react-specialist",
+  "role_description": "Specialized frontend engineer for React components, hooks, JSX styling, state management, and modern Web interface guidelines.",
+  "capabilities": [
+    "react",
+    "javascript",
+    "jsx",
+    "frontend-ui",
+    "components",
+    "css",
+    "state-management"
+  ],
+  "tools": [
+    "filesystem",
+    "code-search"
+  ],
+  "skills": [
+    "frontend-ui-engineering",
+    "vercel-react-best-practices",
+    "web-design-guidelines"
+  ],
+  "model_requirements": {
+    "temperature": 0.2,
+    "preferred_model": "auto"
+  },
+  "category": "frontend"
+}

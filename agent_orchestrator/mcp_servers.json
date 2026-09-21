@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "disabled": false,
+      "description": "Standard Workspace Filesystem MCP Server"
+    },
+    "git": {
+      "disabled": false,
+      "description": "Standard Git Repository MCP Server"
+    },
+    "terminal": {
+      "disabled": false,
+      "description": "Terminal Execution and Test Runner MCP Server"
+    },
+    "memory": {
+      "disabled": false,
+      "description": "Codebase AST Memory and Knowledge Graph MCP Server"
+    }
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "project_title": "React Calculator Application",
+  "goal_summary": "Build a modular, responsive, fully functional React calculator application with history tracking, keyboard support, and clean separation of concerns via a pure calculator engine.",
+  "phases": [
+    {
+      "phase_number": 1,
+      "name": "Foundation & Engine",
+      "description": "Implement the pure calculation engine and reusable display/button components. This phase establishes the core logic and visual primitives before building the full calculator.",
+      "deliverables": [
+        "calculatorEngine.js — pure arithmetic state machine with +, -, *, /, %, decimal, clear, backspace operations",
+        "Button.jsx — reusable styled button component with variant support (number, operator, function, equals)",
+        "Display.jsx — read-only display showing current expression and result with overflow handling"
+      ],
+      "agent_assigned": "CODER"
+    },
+    {
+      "phase_number": 2,
+      "name": "Core Calculator Assembly",
+      "description": "Assemble the main calculator components: Keypad grid, HistoryLog, and the Calculator orchestrator that wires everything together with state management and keyboard event handling.",
+      "deliverables": [
+        "Keypad.jsx — grid layout for all calculator buttons with dynamic configuration",
+        "HistoryLog.jsx — scrollable history log with click-to-restore and clear functionality",
+        "Calculator.jsx — main orchestrator managing state, engine integration, keyboard shortcuts, and localStorage persistence"
+      ],
+      "agent_assigned": "CODER"
+    },
+    {
+      "phase_number": 3,
+      "name": "Styling & Entry Points",
+      "description": "Create the CSS stylesheet with modern dark theme, responsive grid, and accessibility features. Set up the React entry points (App.jsx, index.jsx) to mount the calculator.",
+      "deliverables": [
+        "calculator.css — dark theme with CSS custom properties, responsive grid, hover/active states, reduced motion support",
+        "App.jsx — root component wrapping Calculator with theme provider",
+        "index.jsx — React mount point with strict mode"
+      ],
+      "agent_assigned": "CODER"
+    },
+    {
+      "phase_number": 4,
+      "name": "Testing & Quality Assurance",
+      "description": "Write automated tests for the calculator engine logic, component interactions, and keyboard event simulation. Conduct a quality audit for responsiveness, edge cases, and adherence to design constraints.",
+      "deliverables": [
+        "Unit tests for calculatorEngine.js — all operations, edge cases, error handling",
+        "Integration tests for Calculator component — button clicks, keyboard events, history interactions",
+        "Quality audit report — responsiveness verification, modularity check, edge-case handling"
+      ],
+      "agent_assigned": "TESTER"
+    }
+  ],
+  "milestones": [
+    "Engine foundation complete: calculatorEngine.js handles all operations correctly",
+    "Core UI assembled: Calculator renders with full keypad, display, and history log",
+    "Application fully functional: All operations work via clicks and keyboard shortcuts",
+    "Quality gate passed: All tests pass, responsive on all devices, edge cases handled"
+  ],
+  "risk_mitigations": [
+    {
+      "risk": "Division by zero produces NaN or Infinity",
+      "mitigation": "Engine catches division by zero and returns 'Error' string; display shows error state until cleared"
+    },
+    {
+      "risk": "Keyboard event conflicts with browser shortcuts",
+      "mitigation": "Use keydown listener with preventDefault for calculator keys; map only specific keys (0-9, operators, Enter, Escape, Backspace)"
+    },
+    {
+      "risk": "State desync between engine and UI",
+      "mitigation": "Single source of truth in Calculator.jsx; engine functions are pure (no side effects); all state changes flow through one handler"
+    },
+    {
+      "risk": "Responsive layout breaks on small screens",
+      "mitigation": "CSS Grid with minmax() for button sizing; media queries for viewport-specific adjustments; touch-friendly button sizes (min 44px)"
+    },
+    {
+      "risk": "History data grows unbounded",
+      "mitigation": "Limit history to 50 entries with auto-trim; store only essential data (expression, result, timestamp)"
+    }
+  ],
+  "success_criteria": [
+    "All basic operations (+, -, *, /) produce correct results",
+    "Percentage operation works correctly (x% → x/100, ±% → negate percentage)",
+    "Clear (C) and All-Clear (AC) functions work as expected",
+    "Backspace deletes last character or last operand",
+    "Decimal point handling prevents multiple decimals per number",
+    "Keyboard shortcuts: numbers, operators, Enter (=), Escape (AC), Backspace",
+    "History log records all calculations and allows click-to-restore",
+    "Application is responsive: usable on mobile, tablet, and desktop",
+    "Code is modular: each component has a single responsibility and is independently testable",
+    "Calculator engine is pure: no React dependencies, easily unit-testable"
+  ]
+}

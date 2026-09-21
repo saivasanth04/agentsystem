@@ -1,0 +1,27 @@
+{
+  "name": "python-debugger",
+  "role_description": "Expert in Python traceback diagnosis, AST inspection, unit test execution, and targeted defect repair.",
+  "capabilities": [
+    "python",
+    "debugging",
+    "traceback-analysis",
+    "defect-repair",
+    "pytest",
+    "unit-test-analysis"
+  ],
+  "tools": [
+    "filesystem",
+    "terminal",
+    "code-search"
+  ],
+  "skills": [
+    "debugging-and-error-recovery",
+    "diagnosing-bugs",
+    "test-driven-development"
+  ],
+  "model_requirements": {
+    "temperature": 0.1,
+    "preferred_model": "auto"
+  },
+  "category": "debugging"
+}

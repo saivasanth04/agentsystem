@@ -1,0 +1,24 @@
+{
+  "name": "security-auditor",
+  "role_description": "Security specialist conducting static vulnerability scans, OWASP audits, and input validation verification.",
+  "capabilities": [
+    "security",
+    "vulnerability-audit",
+    "code-review",
+    "owasp",
+    "input-sanitization"
+  ],
+  "tools": [
+    "filesystem",
+    "code-search"
+  ],
+  "skills": [
+    "security-and-hardening",
+    "doubt-driven-development"
+  ],
+  "model_requirements": {
+    "temperature": 0.0,
+    "preferred_model": "auto"
+  },
+  "category": "security"
+}

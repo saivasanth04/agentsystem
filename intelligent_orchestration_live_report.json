@@ -1,0 +1,93 @@
+{
+  "status": "COMPLETED",
+  "verdict": "PASS",
+  "score": 95,
+  "capability_plan_telemetry": [
+    {
+      "stage": "DYNAMIC CAPABILITY PLAN",
+      "message": "Synthesized 6 dynamic capability subtasks: ['Inspect Existing Engine', 'Formulate API Contract', 'Implement IQR Anomaly Detection', 'Write Unit Tests', 'Execute Test Suite', 'Code Review and Quality Audit']",
+      "time": "14:45:19"
+    }
+  ],
+  "dispatched_actions_telemetry": [
+    {
+      "stage": "DYNAMIC ACTION DISPATCH",
+      "message": "Step [1/6]: 'Inspect Existing Engine' -> Matched Agent [security-auditor] (Score: 3.02, Capabilities: ['security', 'vulnerability-audit', 'code-review', 'owasp', 'input-sanitization'])",
+      "time": "14:45:19"
+    },
+    {
+      "stage": "DYNAMIC ACTION DISPATCH",
+      "message": "Step [2/6]: 'Formulate API Contract' -> Matched Agent [SPECIFICATION] (Score: 3.74, Capabilities: ['spec-writing', 'api-contracts'])",
+      "time": "14:47:57"
+    },
+    {
+      "stage": "DYNAMIC ACTION DISPATCH",
+      "message": "Step [3/6]: 'Implement IQR Anomaly Detection' -> Matched Agent [CODER] (Score: 3.56, Capabilities: ['code-generation', 'general-coding'])",
+      "time": "14:48:37"
+    },
+    {
+      "stage": "DYNAMIC ACTION DISPATCH",
+      "message": "Step [4/6]: 'Write Unit Tests' -> Matched Agent [TESTER] (Score: 4.36, Capabilities: ['testing', 'tdd', 'unit-tests'])",
+      "time": "14:48:46"
+    },
+    {
+      "stage": "DYNAMIC ACTION DISPATCH",
+      "message": "Step [5/6]: 'Execute Test Suite' -> Matched Agent [TESTER] (Score: 4.32, Capabilities: ['terminal-execution', 'unit-tests'])",
+      "time": "14:59:01"
+    },
+    {
+      "stage": "DYNAMIC ACTION DISPATCH",
+      "message": "Step [6/6]: 'Code Review and Quality Audit' -> Matched Agent [REVIEWER] (Score: 4.35, Capabilities: ['code-review', 'quality-audit', 'standards-compliance'])",
+      "time": "15:00:27"
+    }
+  ],
+  "skills_telemetry": [
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Injected JIT skills for [security-auditor]: ['test-driven-development', 'browser-testing-with-devtools', 'debugging-and-error-recovery']",
+      "time": "14:45:19"
+    },
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Injected JIT skills for [SPECIFICATION]: ['test-driven-development', 'browser-testing-with-devtools', 'debugging-and-error-recovery']",
+      "time": "14:47:57"
+    },
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Injected JIT skills for [CODER]: ['test-driven-development', 'browser-testing-with-devtools', 'debugging-and-error-recovery']",
+      "time": "14:48:37"
+    },
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Injected JIT skills for [TESTER]: ['tdd', 'test-driven-development', 'browser-testing-with-devtools']",
+      "time": "14:48:46"
+    },
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Injected JIT skills for [TESTER]: ['test-driven-development', 'browser-testing-with-devtools', 'debugging-and-error-recovery']",
+      "time": "14:59:01"
+    },
+    {
+      "stage": "DYNAMIC SKILLS",
+      "message": "Injected JIT skills for [REVIEWER]: ['test-driven-development', 'code-review-and-quality', 'code-review']",
+      "time": "15:00:27"
+    }
+  ],
+  "generated_files": [
+    ".pytest_cache\\.gitignore",
+    ".pytest_cache\\CACHEDIR.TAG",
+    ".pytest_cache\\README.md",
+    ".pytest_cache\\v\\cache\\lastfailed",
+    ".pytest_cache\\v\\cache\\nodeids",
+    "data_engine\\__init__.py",
+    "data_engine\\__pycache__\\__init__.cpython-313.pyc",
+    "data_engine\\__pycache__\\analytics.cpython-313.pyc",
+    "data_engine\\__pycache__\\exporter.cpython-313.pyc",
+    "data_engine\\__pycache__\\validators.cpython-313.pyc",
+    "data_engine\\analytics.py",
+    "data_engine\\exporter.py",
+    "data_engine\\validators.py",
+    "tests\\__pycache__\\test_iqr.cpython-313-pytest-9.1.1.pyc",
+    "tests\\test_iqr.py"
+  ]
+}

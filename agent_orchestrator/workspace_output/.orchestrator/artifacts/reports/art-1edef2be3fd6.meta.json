@@ -1,0 +1,19 @@
+{
+  "artifact_id": "art-1edef2be3fd6",
+  "name": "telemetry_report",
+  "artifact_type": "VERIFIED_OUTPUT",
+  "category": "reports",
+  "uri_or_path": "artifact://reports/art-1edef2be3fd6/telemetry_report",
+  "content_hash": "1edef2be3fd6e2d1f8f4a1923a445e72ad0750e0fd6e998a35cef7c8b442c1f1",
+  "size_bytes": 1381,
+  "mime_type": "application/json",
+  "metadata": {
+    "type": "session_telemetry_report",
+    "storage_path": "C:\\Users\\perur\\Desktop\\Vasanth\\agent_orchestrator\\workspace_output\\.orchestrator\\artifacts\\reports\\art-1edef2be3fd6_telemetry_report.json",
+    "relative_path": "reports/art-1edef2be3fd6_telemetry_report.json"
+  },
+  "task_id": null,
+  "attempt_id": null,
+  "execution_id": "sess-1789895239-4dff27",
+  "created_at": "2026-09-20T14:37:19.559957"
+}

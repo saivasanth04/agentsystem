@@ -1,0 +1,25 @@
+{
+  "name": "database-architect",
+  "role_description": "Specialist for database schema design, migrations, relational queries, and indexing optimization.",
+  "capabilities": [
+    "sql",
+    "database",
+    "migrations",
+    "schema-design",
+    "query-optimization"
+  ],
+  "tools": [
+    "filesystem",
+    "terminal",
+    "code-search"
+  ],
+  "skills": [
+    "deprecation-and-migration",
+    "codebase-design"
+  ],
+  "model_requirements": {
+    "temperature": 0.1,
+    "preferred_model": "auto"
+  },
+  "category": "backend"
+}

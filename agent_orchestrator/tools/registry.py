@@ -1,0 +1,581 @@
+"""
+Core Tool Registry Engine: Centralized Registration, Discovery, Schema Generation,
+Unified Authorization, Pipeline Execution, and Active Health Checking.
+"""
+from dataclasses import dataclass, field
+from enum import Enum
+import inspect
+import json
+import math
+import re
+import time
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+
+from ..runtime.permission_policy import (
+    PolicyEvaluationResult,
+    ToolOperationType,
+    ToolPermissionPolicyEngine,
+)
+
+
+class ToolHealthStatus(str, Enum):
+    HEALTHY = "HEALTHY"
+    DEGRADED = "DEGRADED"
+    UNHEALTHY = "UNHEALTHY"
+    UNKNOWN = "UNKNOWN"
+
+
+@dataclass
+class HealthReport:
+    """Diagnostic health report for a tool."""
+    status: ToolHealthStatus
+    latency_ms: float = 0.0
+    details: str = ""
+    checked_at: float = field(default_factory=time.time)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "status": self.status.value,
+            "latency_ms": round(self.latency_ms, 2),
+            "details": self.details,
+            "checked_at": self.checked_at,
+        }
+
+
+@dataclass
+class ToolExecutionResult:
+    """Standardized result envelope for tool executions."""
+    success: bool
+    output: Any = None
+    data: Any = None
+    duration_ms: float = 0.0
+    error: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    provenance: Optional[Any] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "success": self.success,
+            "output": self.output,
+            "data": self.data,
+            "duration_ms": round(self.duration_ms, 2),
+            "error": self.error,
+            "metadata": self.metadata,
+            "provenance": str(self.provenance.value if hasattr(self.provenance, "value") else self.provenance) if self.provenance else None,
+        }
+
+
+@dataclass
+class ToolEntry:
+    """
+    Metadata and callable envelope for a tool registered in the registry.
+    """
+    name: str
+    description: str = ""
+    tool_instance: Any = None
+    args_schema: Optional[Any] = None
+    operation_type: ToolOperationType = ToolOperationType.READ
+    tags: List[str] = field(default_factory=list)
+    category: str = "general"
+    health_check_fn: Optional[Callable[[], Union[bool, Tuple[bool, str], HealthReport]]] = None
+    timeout_seconds: float = 30.0
+    provenance: Optional[Any] = None
+
+    def get_schema(self) -> Dict[str, Any]:
+        """Generates OpenAI function calling schema for this tool."""
+        properties: Dict[str, Any] = {}
+        required: List[str] = []
+
+        if self.args_schema is not None:
+            if hasattr(self.args_schema, "model_json_schema"):
+                s = self.args_schema.model_json_schema()
+                properties = s.get("properties", {})
+                required = s.get("required", [])
+            elif hasattr(self.args_schema, "schema"):
+                s = self.args_schema.schema()
+                properties = s.get("properties", {})
+                required = s.get("required", [])
+            elif isinstance(self.args_schema, dict):
+                properties = self.args_schema.get("properties", {})
+                required = self.args_schema.get("required", [])
+
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                },
+            },
+        }
+
+
+class ToolRegistry:
+    """
+    Comprehensive Tool Registry managing the entire lifecycle:
+    - register() / unregister()
+    - discover()
+    - get_schema() / get_schemas()
+    - authorize()
+    - execute()
+    - health_check()
+    """
+
+    def __init__(self):
+        self._tools: Dict[str, ToolEntry] = {}
+        self._aliases: Dict[str, str] = {}
+        self._idf: Dict[str, float] = {}
+        self._vector_index: Dict[str, Dict[str, float]] = {}
+
+    def register(
+        self,
+        tool: Any,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        args_schema: Optional[Any] = None,
+        operation_type: Optional[ToolOperationType] = None,
+        tags: Optional[List[str]] = None,
+        category: str = "general",
+        health_check_fn: Optional[Callable[[], Union[bool, Tuple[bool, str], HealthReport]]] = None,
+        timeout_seconds: float = 30.0,
+        aliases: Optional[List[str]] = None,
+        provenance: Optional[Any] = None,
+    ) -> ToolEntry:
+        """
+        Registers a tool into the registry. Supports LangChain StructuredTool,
+        callable functions, or explicit ToolEntry objects.
+        """
+        if isinstance(tool, ToolEntry):
+            entry = tool
+            if provenance is not None and entry.provenance is None:
+                entry.provenance = provenance
+            t_name = entry.name
+        else:
+            t_name = name or getattr(tool, "name", None)
+            if not t_name:
+                if callable(tool):
+                    t_name = tool.__name__
+                else:
+                    raise ValueError("Tool name must be provided or accessible via tool.name")
+
+            t_desc = description or getattr(tool, "description", None) or (tool.__doc__ or "").strip()
+            t_schema = args_schema or getattr(tool, "args_schema", None)
+            t_op = operation_type or ToolPermissionPolicyEngine.get_tool_operation_type(t_name)
+            t_tags = list(tags or [])
+
+            entry = ToolEntry(
+                name=t_name,
+                description=t_desc,
+                tool_instance=tool,
+                args_schema=t_schema,
+                operation_type=t_op,
+                tags=t_tags,
+                category=category,
+                health_check_fn=health_check_fn,
+                timeout_seconds=timeout_seconds,
+                provenance=provenance,
+            )
+
+        norm_key = entry.name.lower().strip()
+        self._tools[norm_key] = entry
+
+        if aliases:
+            for alias in aliases:
+                self._aliases[alias.lower().strip()] = norm_key
+
+        self._rebuild_search_index()
+        return entry
+
+    def unregister(self, name: str) -> bool:
+        """
+        Deregisters a tool from the registry.
+        """
+        norm_key = name.lower().strip()
+        if norm_key in self._aliases:
+            norm_key = self._aliases.pop(norm_key)
+
+        if norm_key in self._tools:
+            del self._tools[norm_key]
+            # Clean any dangling aliases pointing to this key
+            self._aliases = {k: v for k, v in self._aliases.items() if v != norm_key}
+            self._rebuild_search_index()
+            return True
+        return False
+
+    def get(self, name: str) -> Optional[ToolEntry]:
+        """Looks up a tool by exact name or registered alias."""
+        norm_key = name.lower().strip()
+        if norm_key in self._aliases:
+            norm_key = self._aliases[norm_key]
+        return self._tools.get(norm_key)
+
+    def list_tools(self, category: Optional[str] = None) -> List[ToolEntry]:
+        """Returns all registered tool entries, optionally filtered by category."""
+        if not category:
+            return list(self._tools.values())
+        norm_cat = category.lower().strip()
+        return [t for t in self._tools.values() if t.category.lower() == norm_cat]
+
+    def _tokenize(self, text: str) -> List[str]:
+        return [tok for tok in re.findall(r"[a-zA-Z0-9_\-\.]+", text.lower()) if len(tok) > 1]
+
+    def _rebuild_search_index(self):
+        """Rebuilds TF-IDF vector index for semantic tool discovery."""
+        num_docs = len(self._tools)
+        if num_docs == 0:
+            self._idf.clear()
+            self._vector_index.clear()
+            return
+
+        doc_freqs: Dict[str, int] = {}
+        doc_tokens_map: Dict[str, List[str]] = {}
+
+        for key, entry in self._tools.items():
+            corpus_parts = [
+                entry.name,
+                entry.description,
+                entry.category,
+                " ".join(entry.tags),
+            ]
+            tokens = self._tokenize(" ".join(corpus_parts))
+            doc_tokens_map[key] = tokens
+            for tok in set(tokens):
+                doc_freqs[tok] = doc_freqs.get(tok, 0) + 1
+
+        self._idf = {tok: math.log((num_docs + 1) / (freq + 0.5)) + 1.0 for tok, freq in doc_freqs.items()}
+        self._vector_index.clear()
+
+        for key, tokens in doc_tokens_map.items():
+            tf: Dict[str, float] = {}
+            for tok in tokens:
+                tf[tok] = tf.get(tok, 0.0) + 1.0
+            total_tokens = max(len(tokens), 1)
+            vec: Dict[str, float] = {}
+            norm_sq = 0.0
+            for tok, count in tf.items():
+                tfidf = (count / total_tokens) * self._idf.get(tok, 1.0)
+                vec[tok] = tfidf
+                norm_sq += tfidf * tfidf
+            norm = math.sqrt(norm_sq) or 1.0
+            self._vector_index[key] = {tok: val / norm for tok, val in vec.items()}
+
+    def discover(
+        self,
+        query: str = "",
+        tags: Optional[List[str]] = None,
+        category: Optional[str] = None,
+        agent_role: Optional[str] = None,
+        top_k: int = 5,
+        threshold: float = 0.0,
+    ) -> List[Tuple[ToolEntry, float]]:
+        """
+        Discovers relevant tools using TF-IDF similarity, tag bonuses, and category filters.
+        """
+        if not self._tools:
+            return []
+
+        q_tokens = self._tokenize(query) if query else []
+        q_norm_vec: Dict[str, float] = {}
+        if q_tokens:
+            q_tf: Dict[str, float] = {}
+            for tok in q_tokens:
+                q_tf[tok] = q_tf.get(tok, 0.0) + 1.0
+            q_norm_sq = 0.0
+            q_vec: Dict[str, float] = {}
+            for tok, count in q_tf.items():
+                tfidf = (count / max(len(q_tokens), 1)) * self._idf.get(tok, 1.0)
+                q_vec[tok] = tfidf
+                q_norm_sq += tfidf * tfidf
+            q_norm = math.sqrt(q_norm_sq) or 1.0
+            q_norm_vec = {tok: val / q_norm for tok, val in q_vec.items()}
+
+        req_tags = {t.lower().strip() for t in (tags or [])}
+        results: List[Tuple[ToolEntry, float]] = []
+
+        for key, entry in self._tools.items():
+            if category and entry.category.lower() != category.lower().strip():
+                continue
+
+            sim_score = 0.0
+            if q_norm_vec:
+                doc_vec = self._vector_index.get(key, {})
+                sim_score = sum(q_norm_vec[tok] * doc_vec.get(tok, 0.0) for tok in q_norm_vec)
+
+            tag_bonus = 0.0
+            if req_tags:
+                entry_tags = {t.lower().strip() for t in entry.tags}
+                matched_tags = req_tags.intersection(entry_tags)
+                tag_bonus = (len(matched_tags) / len(req_tags)) * 2.0
+
+            name_bonus = 0.0
+            if any(tok in entry.name.lower() for tok in q_tokens):
+                name_bonus += 0.5
+
+            total_score = sim_score + tag_bonus + name_bonus
+            if total_score >= threshold or not query:
+                results.append((entry, total_score))
+
+        results.sort(key=lambda x: x[1], reverse=True)
+        return results[:top_k]
+
+    def get_schema(self, name: str) -> Optional[Dict[str, Any]]:
+        """Returns the OpenAI function calling schema for a specific tool."""
+        entry = self.get(name)
+        if not entry:
+            return None
+        return entry.get_schema()
+
+    def get_schemas(
+        self,
+        names: Optional[List[str]] = None,
+        agent_role: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Returns schemas for specified tools, or all registered tools.
+        """
+        target_entries: List[ToolEntry] = []
+        if names:
+            seen = set()
+            for n in names:
+                entry = self.get(n)
+                if entry and entry.name not in seen:
+                    seen.add(entry.name)
+                    target_entries.append(entry)
+        else:
+            seen = set()
+            for entry in self._tools.values():
+                if entry.name not in seen:
+                    seen.add(entry.name)
+                    target_entries.append(entry)
+
+        return [e.get_schema() for e in target_entries]
+
+    def authorize(
+        self,
+        name: str,
+        args: Dict[str, Any],
+        agent_role: Optional[Any] = None,
+        task_permissions: Optional[Any] = None,
+        workspace: Optional[Any] = None,
+    ) -> PolicyEvaluationResult:
+        """
+        Validates whether an agent with `agent_role` is permitted to execute tool `name` with `args`.
+        """
+        entry = self.get(name)
+        tool_name = entry.name if entry else name
+        op_type = entry.operation_type if entry else None
+        return ToolPermissionPolicyEngine.evaluate_tool_invocation(
+            agent_role=agent_role,
+            tool_name=tool_name,
+            args=args,
+            task_permissions=task_permissions,
+            workspace=workspace,
+            operation_type=op_type,
+        )
+
+    def execute(
+        self,
+        name: str,
+        args: Dict[str, Any],
+        caller_role: Optional[Any] = None,
+        task_permissions: Optional[Any] = None,
+        workspace: Optional[Any] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> ToolExecutionResult:
+        """
+        Executes a registered tool through the standardized pipeline:
+        Authorization -> Normalization -> Idempotency -> Invocation -> Secret Redaction.
+        """
+        t_start = time.time()
+        entry = self.get(name)
+        if not entry:
+            return ToolExecutionResult(
+                success=False,
+                error=f"Tool '{name}' not found.",
+                duration_ms=0.0,
+            )
+
+        # 1. Authorization
+        if caller_role:
+            auth_res = self.authorize(
+                name=entry.name,
+                args=args,
+                agent_role=caller_role,
+                task_permissions=task_permissions,
+                workspace=workspace,
+            )
+            if not auth_res.allowed:
+                return ToolExecutionResult(
+                    success=False,
+                    error=auth_res.reason,
+                    metadata={"suggested_action": auth_res.suggested_action},
+                    duration_ms=round((time.time() - t_start) * 1000, 2),
+                )
+
+        # 2. Argument normalization
+        call_args = dict(args)
+        if entry.name in ("read_file", "write_file", "delete_file", "replace_file_content", "edit_file"):
+            if "file_path" in call_args and "filepath" not in call_args:
+                call_args["filepath"] = call_args.pop("file_path")
+            if "path" in call_args and "filepath" not in call_args:
+                call_args["filepath"] = call_args.pop("path")
+            if "text" in call_args and "content" not in call_args:
+                call_args["content"] = call_args.pop("text")
+
+        # 3. Idempotency Check
+        op_id = call_args.get("operation_id")
+        if op_id:
+            try:
+                from ..runtime.idempotency import global_operation_ledger
+                if global_operation_ledger.has_executed(op_id):
+                    cached_record = global_operation_ledger.get(op_id)
+                    if cached_record and cached_record.result is not None:
+                        res_dict = dict(cached_record.result)
+                        res_dict["cached"] = True
+                        res_dict["already_applied"] = True
+                        return ToolExecutionResult(
+                            success=True,
+                            output=res_dict.get("output", res_dict),
+                            data=res_dict,
+                            duration_ms=round((time.time() - t_start) * 1000, 2),
+                            metadata={"cached": True},
+                        )
+            except Exception:
+                pass
+
+        # 4. Invocation
+        tool_inst = entry.tool_instance
+        try:
+            if hasattr(tool_inst, "invoke"):
+                raw_res = tool_inst.invoke(call_args)
+            elif callable(tool_inst):
+                raw_res = tool_inst(**call_args)
+            else:
+                return ToolExecutionResult(
+                    success=False,
+                    error=f"Tool '{entry.name}' instance is neither callable nor an object with .invoke()",
+                    duration_ms=round((time.time() - t_start) * 1000, 2),
+                )
+
+            # Standardize output
+            output_val = raw_res
+            data_val = None
+            is_success = True
+
+            if isinstance(raw_res, dict):
+                is_success = raw_res.get("success", True)
+                err = raw_res.get("error")
+                output_val = raw_res.get("output") or raw_res.get("content") or raw_res
+                data_val = raw_res
+            else:
+                err = None
+
+            # Secret redaction
+            try:
+                from ..security.secrets import secret_manager
+                output_val = secret_manager.redact_structure(output_val)
+                if data_val:
+                    data_val = secret_manager.redact_structure(data_val)
+            except Exception:
+                pass
+
+            # Untrusted tool payload sanitization
+            try:
+                from ..security.trust_boundaries import UntrustedToolPayload, ToolProvenance
+                prov = entry.provenance or ToolProvenance.WORKSPACE_DATA
+                if isinstance(data_val, dict):
+                    data_val = UntrustedToolPayload.sanitize(entry.name, data_val, provenance=prov)
+                if isinstance(output_val, dict):
+                    output_val = UntrustedToolPayload.sanitize(entry.name, output_val, provenance=prov)
+            except Exception:
+                pass
+
+            duration = (time.time() - t_start) * 1000.0
+            return ToolExecutionResult(
+                success=bool(is_success and not err),
+                output=output_val,
+                data=data_val,
+                duration_ms=round(duration, 2),
+                error=str(err) if err else None,
+                provenance=entry.provenance,
+            )
+        except Exception as ex:
+            duration = (time.time() - t_start) * 1000.0
+            return ToolExecutionResult(
+                success=False,
+                output=None,
+                duration_ms=round(duration, 2),
+                error=str(ex),
+                provenance=entry.provenance if 'entry' in locals() and entry else None,
+            )
+
+    def health_check(self, name: Optional[str] = None) -> Dict[str, HealthReport]:
+        """
+        Executes active liveness probes on registered tools.
+        If `name` is given, inspects only that tool; otherwise checks all tools.
+        """
+        reports: Dict[str, HealthReport] = {}
+        targets = [self.get(name)] if name else list(self._tools.values())
+
+        for entry in targets:
+            if not entry:
+                if name:
+                    reports[name] = HealthReport(
+                        status=ToolHealthStatus.UNKNOWN,
+                        details=f"Tool '{name}' is not registered",
+                    )
+                continue
+
+            t_start = time.time()
+            if entry.health_check_fn:
+                try:
+                    res = entry.health_check_fn()
+                    lat = (time.time() - t_start) * 1000.0
+                    if isinstance(res, HealthReport):
+                        reports[entry.name] = res
+                    elif isinstance(res, tuple) and len(res) == 2:
+                        is_ok, details = res
+                        reports[entry.name] = HealthReport(
+                            status=ToolHealthStatus.HEALTHY if is_ok else ToolHealthStatus.UNHEALTHY,
+                            latency_ms=lat,
+                            details=str(details),
+                        )
+                    elif isinstance(res, bool):
+                        reports[entry.name] = HealthReport(
+                            status=ToolHealthStatus.HEALTHY if res else ToolHealthStatus.UNHEALTHY,
+                            latency_ms=lat,
+                            details="Health check passed" if res else "Health check failed",
+                        )
+                    else:
+                        reports[entry.name] = HealthReport(
+                            status=ToolHealthStatus.HEALTHY,
+                            latency_ms=lat,
+                            details=str(res),
+                        )
+                except Exception as ex:
+                    lat = (time.time() - t_start) * 1000.0
+                    reports[entry.name] = HealthReport(
+                        status=ToolHealthStatus.UNHEALTHY,
+                        latency_ms=lat,
+                        details=f"Health probe exception: {str(ex)}",
+                    )
+            else:
+                # Default sanity check: verify tool instance is present and responsive
+                lat = (time.time() - t_start) * 1000.0
+                if entry.tool_instance is not None:
+                    reports[entry.name] = HealthReport(
+                        status=ToolHealthStatus.HEALTHY,
+                        latency_ms=lat,
+                        details="Tool instance verified present and registered",
+                    )
+                else:
+                    reports[entry.name] = HealthReport(
+                        status=ToolHealthStatus.UNHEALTHY,
+                        latency_ms=lat,
+                        details="Tool instance is None",
+                    )
+
+        return reports
