@@ -802,6 +802,11 @@ class ReActAgentLoop:
                         })
 
                 for tc in tool_calls:
+                    if not isinstance(tc, dict):
+                        if isinstance(tc, str) and tc.strip():
+                            tc = {"name": tc.strip(), "arguments": {}}
+                        else:
+                            continue
                     t_id = tc.get("id", f"call_{int(time.time()*1000)}")
                     if "function" in tc and isinstance(tc["function"], dict):
                         t_name = tc["function"].get("name", "")
@@ -809,6 +814,8 @@ class ReActAgentLoop:
                     else:
                         t_name = tc.get("name", "")
                         raw_args = tc.get("arguments", {})
+                    if not t_name:
+                        continue
                     if isinstance(raw_args, str):
                         try:
                             t_args = loads_repaired(raw_args)

@@ -376,6 +376,53 @@ class ToolRegistry:
             operation_type=op_type,
         )
 
+    @staticmethod
+    def _prune_and_coerce_args(entry: ToolEntry, args: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Prunes extraneous LLM reasoning keys and coerces arguments based on schema / signature.
+        """
+        pruned = dict(args)
+        known_fields: Optional[Set[str]] = None
+
+        if entry.args_schema is not None:
+            if hasattr(entry.args_schema, "model_fields"):
+                known_fields = set(entry.args_schema.model_fields.keys())
+            elif hasattr(entry.args_schema, "__fields__"):
+                known_fields = set(entry.args_schema.__fields__.keys())
+            elif isinstance(entry.args_schema, dict):
+                known_fields = set(entry.args_schema.get("properties", {}).keys())
+
+        tool_inst = entry.tool_instance
+        fn = getattr(tool_inst, "func", None) if tool_inst else None
+        if not fn and callable(tool_inst):
+            fn = tool_inst
+
+        if fn:
+            try:
+                sig = inspect.signature(fn)
+                has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+                if not has_var_keyword:
+                    fn_params = set(sig.parameters.keys())
+                    if known_fields is None:
+                        known_fields = fn_params
+                    else:
+                        known_fields = known_fields.union(fn_params)
+            except Exception:
+                pass
+
+        common_extraneous = {
+            "thought", "thoughts", "reasoning", "_reasoning", "rationale",
+            "_rationale", "explanation", "comment", "comments"
+        }
+        for k in common_extraneous:
+            if known_fields is not None and k not in known_fields and k in pruned:
+                pruned.pop(k, None)
+
+        if known_fields is not None:
+            pruned = {k: v for k, v in pruned.items() if k in known_fields}
+
+        return pruned
+
     def execute(
         self,
         name: str,
@@ -448,11 +495,26 @@ class ToolRegistry:
 
         # 4. Invocation
         tool_inst = entry.tool_instance
+        raw_res = None
         try:
             if hasattr(tool_inst, "invoke"):
-                raw_res = tool_inst.invoke(call_args)
+                try:
+                    raw_res = tool_inst.invoke(call_args)
+                except Exception as inner_ex:
+                    pruned_args = self._prune_and_coerce_args(entry, call_args)
+                    if pruned_args != call_args:
+                        raw_res = tool_inst.invoke(pruned_args)
+                    else:
+                        raise inner_ex
             elif callable(tool_inst):
-                raw_res = tool_inst(**call_args)
+                try:
+                    raw_res = tool_inst(**call_args)
+                except TypeError as inner_ex:
+                    pruned_args = self._prune_and_coerce_args(entry, call_args)
+                    if pruned_args != call_args:
+                        raw_res = tool_inst(**pruned_args)
+                    else:
+                        raise inner_ex
             else:
                 return ToolExecutionResult(
                     success=False,
