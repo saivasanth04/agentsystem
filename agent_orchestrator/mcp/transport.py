@@ -5,6 +5,7 @@ Implements Stdio subprocess transport and In-Memory loopback transport.
 import abc
 import json
 import logging
+import os
 import queue
 import subprocess
 import threading

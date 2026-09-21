@@ -379,7 +379,7 @@ class MCPManager:
                 "health_status": self.get_server_health_status(name),
                 "server_info": session.server_info,
                 "capabilities": session.capabilities.to_dict() if session.capabilities else {},
-                "tools_count": len([t for s_name, t in self._tool_to_server.items() if s_name == name and "__" in s_name]),
+                "tools_count": len([tool_key for tool_key, s_name in self._tool_to_server.items() if s_name == name and "__" in tool_key]),
                 "last_latency_ms": session.last_latency_ms,
                 "pid": transport_pid,
             })
@@ -422,6 +422,15 @@ class MCPManager:
         Ensures target server is ready, respects circuit breaker, and attempts recovery if disconnected.
         """
         server_name = self._tool_to_server.get(tool_name)
+        if not server_name and "__" in tool_name:
+            cand_server = tool_name.split("__")[0]
+            if (
+                cand_server in self._sessions
+                or cand_server in self._server_configs
+                or cand_server in self._servers
+            ):
+                server_name = cand_server
+
         if not server_name or (
             server_name not in self._sessions
             and server_name not in self._server_configs
@@ -460,7 +469,10 @@ class MCPManager:
                 cb.record_failure(e)
                 return ToolCallResult.failure(f"Failed to start MCP server '{server_name}' for tool '{tool_name}': {e}")
 
-        bare_tool_name = tool_name.split("__")[-1]
+        if tool_name in self._tool_cache:
+            bare_tool_name = self._tool_cache[tool_name].name
+        else:
+            bare_tool_name = tool_name.split("__")[-1]
 
         try:
             res = session.call_tool(bare_tool_name, arguments or {}, timeout=timeout)
