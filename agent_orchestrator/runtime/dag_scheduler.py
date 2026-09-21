@@ -189,7 +189,7 @@ class ConcurrentDAGScheduler:
             # 2. Ingest JIT Skills
             skill_query = f"{step_name} {' '.join(req_caps)} {' '.join(pref_skills)} {user_request}"
             discovered_skills = orchestrator.skill_registry.discover(query=skill_query, top_k=3)
-            active_skills = [m.name for m, _ in discovered_skills]
+            active_skills = list(dict.fromkeys(pref_skills + [m.name for m, _ in discovered_skills]))[:5]
             if active_skills:
                 self.on_event("DYNAMIC SKILLS", f"Injected JIT skills for [{agent.name}] on Task [{task_id}]: {active_skills}")
 

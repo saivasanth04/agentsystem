@@ -11,7 +11,14 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
+import threading
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
 
 logger = logging.getLogger("registry.skill")
 
@@ -158,7 +165,7 @@ class SemVer:
         return True
 
     def _satisfies_single_clause(self, clause: str) -> bool:
-        clause = clause.strip()
+        clause = clause.strip().lstrip("@").strip()
         if clause in ("*", ""):
             return True
 
@@ -202,15 +209,16 @@ class SemVer:
 
 def parse_dependency_spec(dep_spec: str) -> Tuple[str, Optional[str]]:
     """
-    Parses a dependency string like 'git-workflow>=1.0.0' or 'base-skill'
-    into (skill_name, version_constraint).
+    Parses a dependency string like 'git-workflow>=1.0.0', 'git-workflow@^1.0.0',
+    or 'base-skill' into (skill_name, version_constraint).
     """
-    match = re.match(r"^([a-zA-Z0-9_\-]+)(.*)$", dep_spec.strip())
+    clean = dep_spec.strip()
+    match = re.match(r"^([a-zA-Z0-9_\-]+)(?:@|\s*([<>=!~^].*)|@(.*))?$", clean)
     if match:
         name = match.group(1).strip()
-        constraint = match.group(2).strip() or None
+        constraint = (match.group(2) or match.group(3) or "").strip() or None
         return name, constraint
-    return dep_spec.strip(), None
+    return clean, None
 
 
 @dataclass
@@ -377,14 +385,19 @@ class SkillExecutionEngine:
         if not skill:
             return {"error": f"Skill '{skill_name}' not found in registry."}
 
-        # Check references first, then rules
+        # Check references first, then rules, scripts, resources
         ref_path_str = skill.references.get(reference_name) or skill.rules.get(reference_name)
         if not ref_path_str:
-            # Fallback search by partial name
+            # Fallback search by partial name or direct relative path inside base_dir
             for k, v in {**skill.references, **skill.rules}.items():
                 if reference_name.lower() in k.lower():
                     ref_path_str = v
                     break
+
+            if not ref_path_str and skill.base_dir:
+                candidate = (Path(skill.base_dir) / reference_name).resolve()
+                if candidate.exists() and candidate.is_file():
+                    ref_path_str = str(candidate)
 
         if not ref_path_str:
             avail = list(skill.references.keys()) + list(skill.rules.keys())
@@ -392,7 +405,17 @@ class SkillExecutionEngine:
                 "error": f"Reference '{reference_name}' not found for skill '{skill_name}'. Available: {avail}"
             }
 
-        ref_path = Path(ref_path_str)
+        ref_path = Path(ref_path_str).resolve()
+        if skill.base_dir:
+            base_p = Path(skill.base_dir).resolve()
+            try:
+                if not ref_path.is_relative_to(base_p):
+                    return {"error": f"Access denied: reference '{reference_name}' is outside skill directory."}
+            except AttributeError:
+                # Python < 3.9 compatibility
+                if not str(ref_path).startswith(str(base_p)):
+                    return {"error": f"Access denied: reference '{reference_name}' is outside skill directory."}
+
         if not ref_path.exists() or not ref_path.is_file():
             return {"error": f"Reference file at '{ref_path_str}' does not exist on disk."}
 
@@ -446,12 +469,26 @@ class SkillExecutionEngine:
                     script_path_str = v
                     break
 
+            if not script_path_str and skill.base_dir:
+                candidate = (Path(skill.base_dir) / script_name).resolve()
+                if candidate.exists() and candidate.is_file():
+                    script_path_str = str(candidate)
+
         if not script_path_str:
             return {
                 "error": f"Script '{script_name}' not found in skill '{skill_name}'. Available: {list(skill.scripts.keys())}"
             }
 
-        script_path = Path(script_path_str)
+        script_path = Path(script_path_str).resolve()
+        if skill.base_dir:
+            base_p = Path(skill.base_dir).resolve()
+            try:
+                if not script_path.is_relative_to(base_p):
+                    return {"error": f"Access denied: script '{script_name}' is outside skill directory."}
+            except AttributeError:
+                if not str(script_path).startswith(str(base_p)):
+                    return {"error": f"Access denied: script '{script_name}' is outside skill directory."}
+
         if not script_path.exists():
             return {"error": f"Script file at '{script_path_str}' does not exist."}
 
@@ -460,7 +497,7 @@ class SkillExecutionEngine:
         args = args or []
 
         if suffix == ".py":
-            cmd = ["python", str(script_path)] + args
+            cmd = [sys.executable, str(script_path)] + args
         elif suffix in [".js", ".mjs"]:
             cmd = ["node", str(script_path)] + args
         elif suffix in [".sh", ".bash"]:
@@ -593,12 +630,14 @@ class SkillManager:
 
     def __init__(self, custom_skills_dir: Optional[Path] = None):
         self.custom_skills_dir = custom_skills_dir
+        self._lock = threading.RLock()
         self._skills: Dict[str, SkillManifest] = {}
         self._versions: Dict[str, Dict[str, SkillManifest]] = {}
         self._loaded_cache: Dict[str, LoadedSkillBundle] = {}
         self._corpus_tokens: Dict[str, Dict[str, float]] = {}
         self._doc_lengths: Dict[str, float] = {}
         self._idf: Dict[str, float] = {}
+        self._catalog_cache: Optional[str] = None
         self.engine = SkillExecutionEngine(self)
         self._discover_all_skills()
 
@@ -635,53 +674,56 @@ class SkillManager:
 
     def _discover_all_skills(self):
         """Scans directories, parses real SKILL.md packages, and builds the semantic index."""
-        search_paths = self._get_search_paths()
-        for base_path in search_paths:
-            for skill_file in base_path.rglob("SKILL.md"):
-                try:
-                    if skill_file.stat().st_size == 0:
-                        continue
-                    self._parse_and_register_skill(skill_file)
-                except Exception as e:
-                    logger.debug(f"Failed parsing skill file {skill_file}: {e}")
-        self._rebuild_semantic_index()
+        with self._lock:
+            search_paths = self._get_search_paths()
+            for base_path in search_paths:
+                for skill_file in base_path.rglob("SKILL.md"):
+                    try:
+                        if skill_file.stat().st_size == 0:
+                            continue
+                        self._parse_and_register_skill(skill_file)
+                    except Exception as e:
+                        logger.debug(f"Failed parsing skill file {skill_file}: {e}")
+            self._catalog_cache = None
+            self._rebuild_semantic_index()
 
     def _rebuild_semantic_index(self):
         """Builds TF-IDF / BM25 token vectors for all registered skills."""
-        doc_freq: Dict[str, int] = {}
-        total_docs = len(self._skills)
-        if total_docs == 0:
-            return
+        with self._lock:
+            doc_freq: Dict[str, int] = {}
+            total_docs = len(self._skills)
+            if total_docs == 0:
+                return
 
-        self._corpus_tokens.clear()
-        self._doc_lengths.clear()
+            self._corpus_tokens.clear()
+            self._doc_lengths.clear()
 
-        # Step 1: Tokenize each skill document
-        for name, manifest in self._skills.items():
-            doc_text = f"{manifest.name} {manifest.name.replace('-', ' ')} {manifest.category} {' '.join(manifest.tags)} {manifest.description} {manifest.system_instructions[:600]}"
-            tokens = self._tokenize(doc_text)
-            term_counts: Dict[str, int] = {}
-            for t in tokens:
-                term_counts[t] = term_counts.get(t, 0) + 1
+            # Step 1: Tokenize each skill document
+            for name, manifest in list(self._skills.items()):
+                doc_text = f"{manifest.name} {manifest.name.replace('-', ' ')} {manifest.category} {' '.join(manifest.tags)} {manifest.description} {manifest.system_instructions[:600]}"
+                tokens = self._tokenize(doc_text)
+                term_counts: Dict[str, int] = {}
+                for t in tokens:
+                    term_counts[t] = term_counts.get(t, 0) + 1
 
-            for t in term_counts:
-                doc_freq[t] = doc_freq.get(t, 0) + 1
+                for t in term_counts:
+                    doc_freq[t] = doc_freq.get(t, 0) + 1
 
-            self._corpus_tokens[name] = {t: float(count) for t, count in term_counts.items()}
+                self._corpus_tokens[name] = {t: float(count) for t, count in term_counts.items()}
 
-        # Step 2: Compute IDF and Document Vectors
-        self._idf = {
-            t: math.log((total_docs + 1.0) / (df + 1.0)) + 1.0
-            for t, df in doc_freq.items()
-        }
+            # Step 2: Compute IDF and Document Vectors
+            self._idf = {
+                t: math.log((total_docs + 1.0) / (df + 1.0)) + 1.0
+                for t, df in doc_freq.items()
+            }
 
-        for name, tf_map in self._corpus_tokens.items():
-            vec_length_sq = 0.0
-            for t, count in tf_map.items():
-                tfidf_val = (1.0 + math.log(count)) * self._idf.get(t, 1.0)
-                tf_map[t] = tfidf_val
-                vec_length_sq += tfidf_val * tfidf_val
-            self._doc_lengths[name] = math.sqrt(vec_length_sq) if vec_length_sq > 0 else 1.0
+            for name, tf_map in self._corpus_tokens.items():
+                vec_length_sq = 0.0
+                for t, count in tf_map.items():
+                    tfidf_val = (1.0 + math.log(count)) * self._idf.get(t, 1.0)
+                    tf_map[t] = tfidf_val
+                    vec_length_sq += tfidf_val * tfidf_val
+                self._doc_lengths[name] = math.sqrt(vec_length_sq) if vec_length_sq > 0 else 1.0
 
     def _tokenize(self, text: str) -> List[str]:
         return [w for w in re.findall(r"[a-zA-Z0-9_\-]+", text.lower()) if len(w) >= 2]
@@ -731,72 +773,122 @@ class SkillManager:
         if content.startswith("---"):
             parts = content.split("---", 2)
             if len(parts) >= 3:
-                frontmatter = parts[1]
+                frontmatter_str = parts[1]
                 body = parts[2].strip()
 
-                current_key = None
-                for line in frontmatter.splitlines():
-                    trimmed = line.strip()
-                    if not trimmed or trimmed.startswith("#"):
-                        continue
+                parsed_fm = None
+                if yaml is not None:
+                    try:
+                        parsed_fm = yaml.safe_load(frontmatter_str)
+                    except Exception as yex:
+                        logger.debug(f"PyYAML parsing failed for {skill_file}: {yex}")
 
-                    if ":" in trimmed and not trimmed.startswith("-"):
-                        key, val = trimmed.split(":", 1)
-                        key = key.strip()
-                        val = val.strip().strip('"').strip("'")
-                        current_key = key
+                if isinstance(parsed_fm, dict):
+                    name = str(parsed_fm.get("name") or name).strip()
+                    desc = parsed_fm.get("description")
+                    if desc:
+                        if isinstance(desc, str):
+                            description = desc.strip()
+                        elif isinstance(desc, list):
+                            description = " ".join(str(x) for x in desc)
+                        else:
+                            description = str(desc).strip()
+                    version = str(parsed_fm.get("version") or version).strip()
+                    category = str(parsed_fm.get("category") or category).strip()
 
-                        if key == "name" and val:
-                            name = val
-                        elif key == "description" and val:
-                            description = val
-                        elif key == "version" and val:
-                            version = val
-                        elif key == "category" and val:
-                            category = val
-                        elif key in ["tags", "required_tools", "dependencies", "permissions"] and val:
-                            clean_val = val.strip("[]")
-                            items = [x.strip().strip('"').strip("'") for x in clean_val.split(",") if x.strip()]
-                            if key == "tags":
-                                tags = items
-                            elif key == "required_tools":
-                                required_tools = items
-                            elif key == "dependencies":
-                                dependencies = items
-                            elif key == "permissions":
-                                permissions = items
-                    elif trimmed.startswith("-") and current_key:
-                        item_val = trimmed.lstrip("-").strip().strip('"').strip("'")
-                        if current_key == "tags":
-                            tags.append(item_val)
-                        elif current_key == "required_tools":
-                            required_tools.append(item_val)
-                        elif current_key == "dependencies":
-                            dependencies.append(item_val)
-                        elif current_key == "permissions":
-                            permissions.append(item_val)
+                    raw_tags = parsed_fm.get("tags") or []
+                    if isinstance(raw_tags, list):
+                        tags = [str(t).strip() for t in raw_tags if str(t).strip()]
+                    elif isinstance(raw_tags, str):
+                        tags = [t.strip() for t in raw_tags.split(",") if t.strip()]
+
+                    raw_req = parsed_fm.get("required_tools") or []
+                    if isinstance(raw_req, list):
+                        required_tools = [str(t).strip() for t in raw_req if str(t).strip()]
+                    elif isinstance(raw_req, str):
+                        required_tools = [t.strip() for t in raw_req.split(",") if t.strip()]
+
+                    raw_deps = parsed_fm.get("dependencies") or []
+                    if isinstance(raw_deps, list):
+                        dependencies = [str(d).strip() for d in raw_deps if str(d).strip()]
+                    elif isinstance(raw_deps, str):
+                        dependencies = [d.strip() for d in raw_deps.split(",") if d.strip()]
+
+                    raw_perms = parsed_fm.get("permissions") or []
+                    if isinstance(raw_perms, list):
+                        permissions = [str(p).strip() for p in raw_perms if str(p).strip()]
+                    elif isinstance(raw_perms, str):
+                        permissions = [p.strip() for p in raw_perms.split(",") if p.strip()]
+                else:
+                    # Fallback line parser
+                    current_key = None
+                    for line in frontmatter_str.splitlines():
+                        trimmed = line.strip()
+                        if not trimmed or trimmed.startswith("#"):
+                            continue
+
+                        if ":" in trimmed and not trimmed.startswith("-"):
+                            k, v = trimmed.split(":", 1)
+                            k = k.strip()
+                            v = v.strip().strip('"').strip("'")
+                            current_key = k
+
+                            if k == "name" and v:
+                                name = v
+                            elif k == "description" and v and v not in (">", "|"):
+                                description = v
+                            elif k == "version" and v:
+                                version = v
+                            elif k == "category" and v:
+                                category = v
+                            elif k in ["tags", "required_tools", "dependencies", "permissions"] and v:
+                                clean_val = v.strip("[]")
+                                items = [x.strip().strip('"').strip("'") for x in clean_val.split(",") if x.strip()]
+                                if k == "tags":
+                                    tags = items
+                                elif k == "required_tools":
+                                    required_tools = items
+                                elif k == "dependencies":
+                                    dependencies = items
+                                elif k == "permissions":
+                                    permissions = items
+                        elif trimmed.startswith("-") and current_key:
+                            item_val = trimmed.lstrip("-").strip().strip('"').strip("'")
+                            if current_key == "tags":
+                                tags.append(item_val)
+                            elif current_key == "required_tools":
+                                required_tools.append(item_val)
+                            elif current_key == "dependencies":
+                                dependencies.append(item_val)
+                            elif current_key == "permissions":
+                                permissions.append(item_val)
+                        elif current_key == "description" and trimmed:
+                            if description in (">", "|", "Agent skill package from skills.sh"):
+                                description = trimmed
+                            else:
+                                description += " " + trimmed
 
         scripts: Dict[str, str] = {}
         references: Dict[str, str] = {}
         rules: Dict[str, str] = {}
 
-        scripts_dir = skill_dir / "scripts"
-        if scripts_dir.exists() and scripts_dir.is_dir():
-            for f in scripts_dir.rglob("*"):
-                if f.is_file():
-                    scripts[f.name] = str(f)
+        def _index_dir(dir_path: Path, target_dict: Dict[str, str]):
+            if dir_path.exists() and dir_path.is_dir():
+                for f in dir_path.rglob("*"):
+                    if f.is_file():
+                        target_dict[f.name] = str(f)
+                        try:
+                            rel_posix = str(f.relative_to(skill_dir)).replace("\\", "/")
+                            target_dict[rel_posix] = str(f)
+                            sub_rel = str(f.relative_to(dir_path)).replace("\\", "/")
+                            target_dict[sub_rel] = str(f)
+                        except Exception:
+                            pass
 
-        refs_dir = skill_dir / "references"
-        if refs_dir.exists() and refs_dir.is_dir():
-            for f in refs_dir.rglob("*"):
-                if f.is_file():
-                    references[f.name] = str(f)
-
-        rules_dir = skill_dir / "rules"
-        if rules_dir.exists() and rules_dir.is_dir():
-            for f in rules_dir.rglob("*"):
-                if f.is_file():
-                    rules[f.name] = str(f)
+        _index_dir(skill_dir / "scripts", scripts)
+        _index_dir(skill_dir / "references", references)
+        _index_dir(skill_dir / "resources", references)
+        _index_dir(skill_dir / "rules", rules)
 
         if not required_tools:
             required_tools = ["read_file", "replace_file_content", "terminal_execute"]
@@ -842,75 +934,80 @@ class SkillManager:
 
     def register_skill(self, skill: SkillManifest):
         """Manually registers or overrides a skill, indexing its version."""
-        norm = skill.name.replace("_", "-").lower()
-        if norm not in self._versions:
-            self._versions[norm] = {}
-        self._versions[norm][skill.version] = skill
+        with self._lock:
+            norm = skill.name.replace("_", "-").lower()
+            if norm not in self._versions:
+                self._versions[norm] = {}
+            self._versions[norm][skill.version] = skill
 
-        # Update default/active manifest in self._skills if higher SemVer
-        current = self._skills.get(skill.name)
-        if current:
-            try:
-                if SemVer.parse(skill.version) >= SemVer.parse(current.version):
+            # Update default/active manifest in self._skills if higher SemVer
+            current = self._skills.get(skill.name)
+            if current:
+                try:
+                    if SemVer.parse(skill.version) >= SemVer.parse(current.version):
+                        self._skills[skill.name] = skill
+                except Exception:
                     self._skills[skill.name] = skill
-            except Exception:
+            else:
                 self._skills[skill.name] = skill
-        else:
-            self._skills[skill.name] = skill
 
-        self._rebuild_semantic_index()
+            self._catalog_cache = None
+            self._rebuild_semantic_index()
 
     def get_skill(self, name: str, version: Optional[str] = None) -> Optional[SkillManifest]:
         """Gets a skill by exact or normalized name, optionally constrained by version."""
-        norm = name.replace("_", "-").lower()
+        with self._lock:
+            norm = name.replace("_", "-").lower()
 
-        # Check versioned map first if present
-        if norm in self._versions and self._versions[norm]:
-            version_map = self._versions[norm]
-            if version:
-                if version in version_map:
-                    return version_map[version]
-                matching: List[Tuple[SemVer, SkillManifest]] = []
-                for v_str, manifest in version_map.items():
+            # Check versioned map first if present
+            if norm in self._versions and self._versions[norm]:
+                version_map = self._versions[norm]
+                if version:
+                    clean_v = version.lstrip("@").strip()
+                    if clean_v in version_map:
+                        return version_map[clean_v]
+                    matching: List[Tuple[SemVer, SkillManifest]] = []
+                    for v_str, manifest in version_map.items():
+                        try:
+                            sv = SemVer.parse(v_str)
+                            if sv.satisfies(clean_v):
+                                matching.append((sv, manifest))
+                        except Exception:
+                            if v_str == clean_v:
+                                matching.append((SemVer(0, 0, 0), manifest))
+                    if matching:
+                        matching.sort(key=lambda x: x[0], reverse=True)
+                        return matching[0][1]
+                    return None
+                else:
                     try:
-                        sv = SemVer.parse(v_str)
-                        if sv.satisfies(version):
-                            matching.append((sv, manifest))
+                        sorted_versions = sorted(
+                            version_map.items(),
+                            key=lambda x: SemVer.parse(x[0]),
+                            reverse=True,
+                        )
+                        return sorted_versions[0][1]
                     except Exception:
-                        if v_str == version:
-                            matching.append((SemVer(0, 0, 0), manifest))
-                if matching:
-                    matching.sort(key=lambda x: x[0], reverse=True)
-                    return matching[0][1]
-                return None
-            else:
+                        pass
+
+            # Fallback to unversioned _skills map
+            manifest = self._skills.get(name)
+            if not manifest:
+                for k, v in self._skills.items():
+                    if k.replace("_", "-").lower() == norm:
+                        manifest = v
+                        break
+
+            if manifest and version:
+                clean_v = version.lstrip("@").strip()
                 try:
-                    sorted_versions = sorted(
-                        version_map.items(),
-                        key=lambda x: SemVer.parse(x[0]),
-                        reverse=True,
-                    )
-                    return sorted_versions[0][1]
+                    if SemVer.parse(manifest.version).satisfies(clean_v):
+                        return manifest
+                    return None
                 except Exception:
-                    pass
+                    return manifest if manifest.version == clean_v else None
 
-        # Fallback to unversioned _skills map
-        manifest = self._skills.get(name)
-        if not manifest:
-            for k, v in self._skills.items():
-                if k.replace("_", "-").lower() == norm:
-                    manifest = v
-                    break
-
-        if manifest and version:
-            try:
-                if SemVer.parse(manifest.version).satisfies(version):
-                    return manifest
-                return None
-            except Exception:
-                return manifest if manifest.version == version else None
-
-        return manifest
+            return manifest
 
     def version(self, name: str) -> Optional[str]:
         """Returns the active/latest version string of the requested skill."""
@@ -919,15 +1016,57 @@ class SkillManager:
 
     def list_versions(self, name: str) -> List[str]:
         """Returns all registered versions for a skill, sorted by SemVer ascending."""
-        norm = name.replace("_", "-").lower()
-        if norm in self._versions:
-            versions = list(self._versions[norm].keys())
-            try:
-                return sorted(versions, key=lambda v: SemVer.parse(v))
-            except Exception:
-                return sorted(versions)
-        manifest = self.get_skill(name)
-        return [manifest.version] if manifest else []
+        with self._lock:
+            norm = name.replace("_", "-").lower()
+            if norm in self._versions:
+                versions = list(self._versions[norm].keys())
+                try:
+                    return sorted(versions, key=lambda v: SemVer.parse(v))
+                except Exception:
+                    return sorted(versions)
+            manifest = self.get_skill(name)
+            return [manifest.version] if manifest else []
+
+    def resolve_dependency_manifests(self, skill_name: str, version: Optional[str] = None) -> List[SkillManifest]:
+        """
+        Resolves transitive dependencies and returns ordered list of SkillManifest objects
+        preserving the exact constraint-satisfying version for each node.
+        """
+        with self._lock:
+            root_manifest = self.get_skill(skill_name, version=version)
+            if not root_manifest:
+                raise MissingDependencyError(f"Root skill '{skill_name}' not found in registry.")
+
+            resolved: List[SkillManifest] = []
+            visited: Set[str] = set()
+            visiting: List[str] = []
+
+            def dfs(current_name: str, current_version_constraint: Optional[str] = None):
+                norm = current_name.replace("_", "-").lower()
+                if norm in visiting:
+                    cycle_path = " -> ".join(visiting + [norm])
+                    raise CircularDependencyError(f"Circular dependency detected: {cycle_path}")
+                if norm in visited:
+                    return
+
+                manifest = self.get_skill(current_name, version=current_version_constraint)
+                if not manifest:
+                    raise MissingDependencyError(
+                        f"Dependency '{current_name}' (constraint: {current_version_constraint or '*'}) not found in registry."
+                    )
+
+                visiting.append(norm)
+
+                for dep_spec in manifest.dependencies:
+                    dep_name, dep_constraint = parse_dependency_spec(dep_spec)
+                    dfs(dep_name, dep_constraint)
+
+                visiting.pop()
+                visited.add(norm)
+                resolved.append(manifest)
+
+            dfs(root_manifest.name, version)
+            return resolved
 
     def resolve_dependencies(self, skill_name: str, version: Optional[str] = None) -> List[str]:
         """
@@ -936,52 +1075,7 @@ class SkillManager:
         (dependencies first, root skill last).
         Detects circular dependencies and raises CircularDependencyError.
         """
-        root_manifest = self.get_skill(skill_name, version=version)
-        if not root_manifest:
-            raise MissingDependencyError(f"Root skill '{skill_name}' not found in registry.")
-
-        resolved: List[str] = []
-        visited: Set[str] = set()
-        visiting: List[str] = []
-
-        def dfs(current_name: str, current_version_constraint: Optional[str] = None):
-            norm = current_name.replace("_", "-").lower()
-            if norm in visiting:
-                cycle_path = " -> ".join(visiting + [norm])
-                raise CircularDependencyError(f"Circular dependency detected: {cycle_path}")
-            if norm in visited:
-                return
-
-            manifest = self.get_skill(current_name, version=current_version_constraint)
-            if not manifest:
-                raise MissingDependencyError(
-                    f"Dependency '{current_name}' (constraint: {current_version_constraint or '*'}) not found in registry."
-                )
-
-            visiting.append(norm)
-
-            for dep_spec in manifest.dependencies:
-                dep_name, dep_constraint = parse_dependency_spec(dep_spec)
-                dfs(dep_name, dep_constraint)
-
-            visiting.pop()
-            visited.add(norm)
-            resolved.append(manifest.name)
-
-        dfs(root_manifest.name, version)
-        return resolved
-
-    def resolve_dependency_manifests(self, skill_name: str, version: Optional[str] = None) -> List[SkillManifest]:
-        """
-        Resolves transitive dependencies and returns ordered list of SkillManifest objects.
-        """
-        names = self.resolve_dependencies(skill_name, version=version)
-        manifests: List[SkillManifest] = []
-        for n in names:
-            m = self.get_skill(n)
-            if m:
-                manifests.append(m)
-        return manifests
+        return [m.name for m in self.resolve_dependency_manifests(skill_name, version=version)]
 
     def validate(
         self,
@@ -1099,15 +1193,17 @@ class SkillManager:
 
     def validate_all(self, tool_registry: Optional[Any] = None) -> Dict[str, SkillValidationReport]:
         """Validates all registered skills and returns a dictionary of reports."""
-        return {name: self.validate(manifest, tool_registry=tool_registry) for name, manifest in self._skills.items()}
+        with self._lock:
+            return {name: self.validate(manifest, tool_registry=tool_registry) for name, manifest in list(self._skills.items())}
 
     def list(self, category: Optional[str] = None) -> List[SkillManifest]:
         """Lists registered skills, optionally filtered by category domain."""
-        all_skills = list(self._skills.values())
-        if category:
-            cat_clean = category.lower().strip()
-            return [s for s in all_skills if s.category.lower() == cat_clean]
-        return all_skills
+        with self._lock:
+            all_skills = list(self._skills.values())
+            if category:
+                cat_clean = category.lower().strip()
+                return [s for s in all_skills if s.category.lower() == cat_clean]
+            return all_skills
 
     def list_skills(self, category: Optional[str] = None) -> List[SkillManifest]:
         """Alias for list()."""
@@ -1115,7 +1211,8 @@ class SkillManager:
 
     def get_categories(self) -> List[str]:
         """Returns all unique skill categories."""
-        return sorted(list({s.category for s in self._skills.values()}))
+        with self._lock:
+            return sorted(list({s.category for s in self._skills.values()}))
 
     # ==========================================
     # DYNAMIC JIT SKILL DISCOVERY & SEMANTIC MATCHING
@@ -1135,96 +1232,98 @@ class SkillManager:
         metadata keyword matching, and multi-criteria filters (category, tags, required_tools, version_constraint).
         Returns list of (SkillManifest, relevance_score).
         """
-        if not self._skills:
-            return []
+        with self._lock:
+            if not self._skills:
+                return []
 
-        query_clean = (query or "").lower().strip()
-        query_tokens = self._tokenize(query_clean) if query_clean else []
+            query_clean = (query or "").lower().strip()
+            query_tokens = self._tokenize(query_clean) if query_clean else []
 
-        # Pre-filter candidate skills
-        candidate_manifests: List[SkillManifest] = []
-        for name, manifest in self._skills.items():
-            # Category filter
-            if category and manifest.category.lower() != category.lower().strip():
-                continue
-
-            # Version constraint filter
-            if version_constraint:
-                try:
-                    if not SemVer.parse(manifest.version).satisfies(version_constraint):
-                        continue
-                except Exception:
-                    if manifest.version != version_constraint:
-                        continue
-
-            # Required tools filter
-            if required_tools:
-                skill_tools = set(manifest.required_tools)
-                req_tools_set = set(required_tools)
-                if not skill_tools.intersection(req_tools_set):
+            # Pre-filter candidate skills
+            candidate_manifests: List[SkillManifest] = []
+            for name, manifest in self._skills.items():
+                # Category filter
+                if category and manifest.category.lower() != category.lower().strip():
                     continue
 
-            # Tags filter
-            if tags:
-                skill_tags = {t.lower() for t in manifest.tags}
-                req_tags = {t.lower() for t in tags}
-                if not skill_tags.intersection(req_tags):
-                    continue
+                # Version constraint filter
+                if version_constraint:
+                    clean_v = version_constraint.lstrip("@").strip()
+                    try:
+                        if not SemVer.parse(manifest.version).satisfies(clean_v):
+                            continue
+                    except Exception:
+                        if manifest.version != clean_v:
+                            continue
 
-            candidate_manifests.append(manifest)
+                # Required tools filter
+                if required_tools:
+                    skill_tools = set(manifest.required_tools)
+                    req_tools_set = set(required_tools)
+                    if not skill_tools.intersection(req_tools_set):
+                        continue
 
-        if not candidate_manifests:
-            return []
+                # Tags filter
+                if tags:
+                    skill_tags = {t.lower() for t in manifest.tags}
+                    req_tags = {t.lower() for t in tags}
+                    if not skill_tags.intersection(req_tags):
+                        continue
 
-        # If no query string, rank candidates by default score
-        if not query_tokens:
-            results = [(m, 1.0) for m in candidate_manifests]
-            return results[:top_k]
+                candidate_manifests.append(manifest)
 
-        # Build query vector
-        query_counts: Dict[str, int] = {}
-        for t in query_tokens:
-            query_counts[t] = query_counts.get(t, 0) + 1
+            if not candidate_manifests:
+                return []
 
-        query_vec: Dict[str, float] = {}
-        q_len_sq = 0.0
-        for t, count in query_counts.items():
-            val = (1.0 + math.log(count)) * self._idf.get(t, 1.0)
-            query_vec[t] = val
-            q_len_sq += val * val
-        q_len = math.sqrt(q_len_sq) if q_len_sq > 0 else 1.0
+            # If no query string, rank candidates by default score
+            if not query_tokens:
+                results = [(m, 1.0) for m in candidate_manifests]
+                return results[:top_k]
 
-        scores: List[Tuple[SkillManifest, float]] = []
+            # Build query vector
+            query_counts: Dict[str, int] = {}
+            for t in query_tokens:
+                query_counts[t] = query_counts.get(t, 0) + 1
 
-        for manifest in candidate_manifests:
-            name = manifest.name
-            # 1. Cosine similarity from TF-IDF vector space
-            doc_vec = self._corpus_tokens.get(name, {})
-            doc_len = self._doc_lengths.get(name, 1.0)
-            dot_product = sum(query_vec[t] * doc_vec.get(t, 0.0) for t in query_vec if t in doc_vec)
-            cosine_sim = dot_product / (q_len * doc_len) if (q_len * doc_len) > 0 else 0.0
+            query_vec: Dict[str, float] = {}
+            q_len_sq = 0.0
+            for t, count in query_counts.items():
+                val = (1.0 + math.log(count)) * self._idf.get(t, 1.0)
+                query_vec[t] = val
+                q_len_sq += val * val
+            q_len = math.sqrt(q_len_sq) if q_len_sq > 0 else 1.0
 
-            # 2. Metadata matching bonus
-            meta_bonus = 0.0
-            name_norm = manifest.name.replace("-", " ").replace("_", " ").lower()
-            tag_str = " ".join(manifest.tags).lower()
+            scores: List[Tuple[SkillManifest, float]] = []
 
-            if query_clean == manifest.name.lower() or query_clean in name_norm:
-                meta_bonus += 1.0
-            if any(t in name_norm for t in query_tokens):
-                meta_bonus += 0.4
-            if any(t in tag_str for t in query_tokens):
-                meta_bonus += 0.3
-            if any(t == manifest.category.lower() for t in query_tokens):
-                meta_bonus += 0.2
+            for manifest in candidate_manifests:
+                name = manifest.name
+                # 1. Cosine similarity from TF-IDF vector space
+                doc_vec = self._corpus_tokens.get(name, {})
+                doc_len = self._doc_lengths.get(name, 1.0)
+                dot_product = sum(query_vec[t] * doc_vec.get(t, 0.0) for t in query_vec if t in doc_vec)
+                cosine_sim = dot_product / (q_len * doc_len) if (q_len * doc_len) > 0 else 0.0
 
-            final_score = (cosine_sim * 0.7) + (min(meta_bonus, 1.0) * 0.3)
+                # 2. Metadata matching bonus
+                meta_bonus = 0.0
+                name_norm = manifest.name.replace("-", " ").replace("_", " ").lower()
+                tag_str = " ".join(manifest.tags).lower()
 
-            if final_score >= threshold:
-                scores.append((manifest, round(final_score, 4)))
+                if query_clean == manifest.name.lower() or query_clean in name_norm:
+                    meta_bonus += 1.0
+                if any(t in name_norm for t in query_tokens):
+                    meta_bonus += 0.4
+                if any(t in tag_str for t in query_tokens):
+                    meta_bonus += 0.3
+                if any(t == manifest.category.lower() for t in query_tokens):
+                    meta_bonus += 0.2
 
-        scores.sort(key=lambda x: x[1], reverse=True)
-        return scores[:top_k]
+                final_score = (cosine_sim * 0.7) + (min(meta_bonus, 1.0) * 0.3)
+
+                if final_score >= threshold:
+                    scores.append((manifest, round(final_score, 4)))
+
+            scores.sort(key=lambda x: x[1], reverse=True)
+            return scores[:top_k]
 
     def search_skills(
         self,
@@ -1267,67 +1366,66 @@ class SkillManager:
         (subclassing str for full backwards compatibility).
         Caches the parsed result in memory.
         """
-        norm_name = skill_name.replace("_", "-").lower()
-        cache_key = f"{norm_name}@{version}" if version else norm_name
-        if cache_key in self._loaded_cache:
-            return self._loaded_cache[cache_key]
+        with self._lock:
+            norm_name = skill_name.replace("_", "-").lower()
+            cache_key = f"{norm_name}@{version}" if version else norm_name
+            if cache_key in self._loaded_cache:
+                return self._loaded_cache[cache_key]
 
-        manifest = self.get_skill(skill_name, version=version)
-        if not manifest:
-            return None
+            manifest = self.get_skill(skill_name, version=version)
+            if not manifest:
+                return None
 
-        # Resolve transitive dependencies if requested
-        dep_manifests: List[SkillManifest] = []
-        if resolve_deps and manifest.dependencies:
-            try:
-                ordered_names = self.resolve_dependencies(manifest.name, version=version)
-                for dep_name in ordered_names:
-                    if dep_name != manifest.name:
-                        dm = self.get_skill(dep_name)
-                        if dm:
+            # Resolve transitive dependencies if requested
+            dep_manifests: List[SkillManifest] = []
+            if resolve_deps and manifest.dependencies:
+                try:
+                    ordered_manifests = self.resolve_dependency_manifests(manifest.name, version=version)
+                    for dm in ordered_manifests:
+                        if dm.name != manifest.name:
                             dep_manifests.append(dm)
-            except Exception as ex:
-                logger.debug(f"Dependency resolution notice for '{skill_name}': {ex}")
+                except Exception as ex:
+                    logger.debug(f"Dependency resolution notice for '{skill_name}': {ex}")
 
-        # Consolidate scripts, references, and rules across dependencies
-        consolidated_scripts = dict(manifest.scripts)
-        consolidated_refs = dict(manifest.references)
-        consolidated_rules = dict(manifest.rules)
-        for dm in dep_manifests:
-            for k, v in dm.scripts.items():
-                consolidated_scripts.setdefault(k, v)
-            for k, v in dm.references.items():
-                consolidated_refs.setdefault(k, v)
-            for k, v in dm.rules.items():
-                consolidated_rules.setdefault(k, v)
+            # Consolidate scripts, references, and rules across dependencies
+            consolidated_scripts = dict(manifest.scripts)
+            consolidated_refs = dict(manifest.references)
+            consolidated_rules = dict(manifest.rules)
+            for dm in dep_manifests:
+                for k, v in dm.scripts.items():
+                    consolidated_scripts.setdefault(k, v)
+                for k, v in dm.references.items():
+                    consolidated_refs.setdefault(k, v)
+                for k, v in dm.rules.items():
+                    consolidated_rules.setdefault(k, v)
 
-        # Format skill guidelines
-        lines = [
-            f"### [Skill: {manifest.name} ({manifest.category.title()})]",
-            f"**Description**: {manifest.description}",
-        ]
-        if manifest.system_instructions:
-            lines.append(f"\n{manifest.system_instructions}")
-        if consolidated_rules:
-            lines.append(f"\n**Enforced Rules**: {', '.join(consolidated_rules.keys())}")
-        if consolidated_refs:
-            lines.append(f"**References Available**: {', '.join(consolidated_refs.keys())}")
-        if dep_manifests:
-            lines.append(f"**Dependencies**: {', '.join(d.name for d in dep_manifests)}")
+            # Format skill guidelines
+            lines = [
+                f"### [Skill: {manifest.name} ({manifest.category.title()})]",
+                f"**Description**: {manifest.description}",
+            ]
+            if manifest.system_instructions:
+                lines.append(f"\n{manifest.system_instructions}")
+            if consolidated_rules:
+                lines.append(f"\n**Enforced Rules**: {', '.join(consolidated_rules.keys())}")
+            if consolidated_refs:
+                lines.append(f"**References Available**: {', '.join(consolidated_refs.keys())}")
+            if dep_manifests:
+                lines.append(f"**Dependencies**: {', '.join(d.name for d in dep_manifests)}")
 
-        full_text = "\n".join(lines)
-        bundle = LoadedSkillBundle(
-            content=full_text,
-            manifest=manifest,
-            dependencies=dep_manifests,
-            scripts=consolidated_scripts,
-            references=consolidated_refs,
-            rules=consolidated_rules,
-        )
-        self._loaded_cache[cache_key] = bundle
-        if not version:
-            self._loaded_cache[norm_name] = bundle
-        return bundle
+            full_text = "\n".join(lines)
+            bundle = LoadedSkillBundle(
+                content=full_text,
+                manifest=manifest,
+                dependencies=dep_manifests,
+                scripts=consolidated_scripts,
+                references=consolidated_refs,
+                rules=consolidated_rules,
+            )
+            self._loaded_cache[cache_key] = bundle
+            if not version:
+                self._loaded_cache[norm_name] = bundle
+            return bundle
 
     def load_many(self, skill_names: List[str]) -> str:
         """
@@ -1350,32 +1448,39 @@ class SkillManager:
         """
         Unloads and removes a skill from the memory cache.
         """
-        norm_name = skill_name.replace("_", "-").lower()
-        keys_to_remove = [k for k in self._loaded_cache if k == norm_name or k.startswith(f"{norm_name}@")]
-        for k in keys_to_remove:
-            self._loaded_cache.pop(k, None)
+        with self._lock:
+            norm_name = skill_name.replace("_", "-").lower()
+            keys_to_remove = [k for k in self._loaded_cache if k == norm_name or k.startswith(f"{norm_name}@")]
+            for k in keys_to_remove:
+                self._loaded_cache.pop(k, None)
 
     def get_catalog_summary(self, agent_name: Optional[str] = None) -> str:
         """
         Generates a concise markdown catalog summary of all available domains and skills.
         """
-        categories = self.get_categories()
-        total_count = len(self._skills)
-        lines = [
-            f"### Available Skills Catalog ({total_count} skills across {len(categories)} domains)",
-            "| Domain | Key Skills | Capabilities |",
-            "|---|---|---|",
-        ]
+        with self._lock:
+            if self._catalog_cache is not None:
+                return self._catalog_cache
 
-        for cat in categories:
-            cat_skills = self.list(category=cat)
-            names_preview = ", ".join([s.name for s in cat_skills[:4]])
-            if len(cat_skills) > 4:
-                names_preview += f" (+{len(cat_skills)-4} more)"
-            sample_desc = cat_skills[0].description[:60] + "..." if cat_skills else ""
-            lines.append(f"| **{cat.title()}** | `{names_preview}` | {sample_desc} |")
+            categories = self.get_categories()
+            total_count = len(self._skills)
+            lines = [
+                f"### Available Skills Catalog ({total_count} skills across {len(categories)} domains)",
+                "| Domain | Key Skills | Capabilities |",
+                "|---|---|---|",
+            ]
 
-        return "\n".join(lines)
+            for cat in categories:
+                cat_skills = self.list(category=cat)
+                names_preview = ", ".join([s.name for s in cat_skills[:4]])
+                if len(cat_skills) > 4:
+                    names_preview += f" (+{len(cat_skills)-4} more)"
+                sample_desc = cat_skills[0].description[:60] + "..." if cat_skills else ""
+                lines.append(f"| **{cat.title()}** | `{names_preview}` | {sample_desc} |")
+
+            summary = "\n".join(lines)
+            self._catalog_cache = summary
+            return summary
 
     def install_skill_from_skills_sh(self, skill_slug: str) -> bool:
         """
