@@ -128,7 +128,7 @@ class UnifiedToolDispatcher:
                     tools.extend(mcp_tools)
         return tools
 
-    def call_tool(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    def call_tool(self, name: str, arguments: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Dispatch tool call across either Builtin Registry or MCP Server Manager.
         Reacts adaptively to server health:
@@ -136,7 +136,8 @@ class UnifiedToolDispatcher:
         - If MCP server is UNHEALTHY: fails-fast and routes to native fallback provider (e.g. CBM or Filesystem) without blocking.
         - If tool is native (e.g. graft_subtask / spawn_subtasks): routes to Builtin Registry.
         """
-        clean_name = name.strip()
+        clean_name = (name or "").strip()
+        arguments = arguments if isinstance(arguments, dict) else {}
 
         # Priority 1: Check if tool belongs to an MCP Server
         if self.mcp_manager:

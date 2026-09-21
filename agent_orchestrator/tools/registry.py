@@ -463,7 +463,7 @@ class ToolRegistry:
                 )
 
         # 2. Argument normalization
-        call_args = dict(args)
+        call_args = dict(args) if isinstance(args, dict) else {}
         if entry.name in ("read_file", "write_file", "delete_file", "replace_file_content", "edit_file"):
             if "file_path" in call_args and "filepath" not in call_args:
                 call_args["filepath"] = call_args.pop("file_path")

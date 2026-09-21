@@ -382,10 +382,9 @@ class ConcurrentDAGScheduler:
                         elif isinstance(tu, dict):
                             attempt_token_usage = TokenUsage.from_dict(tu)
                     else:
-                        prompt_len = len(json.dumps(task_context, default=str))
-                        res_len = len(json.dumps(res, default=str))
-                        p_tok = max(1, prompt_len // 4)
-                        c_tok = max(1, res_len // 4)
+                        from ..context.token_estimator import estimate_tokens
+                        p_tok = estimate_tokens(json.dumps(task_context, default=str))
+                        c_tok = estimate_tokens(json.dumps(res, default=str))
                         attempt_token_usage = TokenUsage(prompt_tokens=p_tok, completion_tokens=c_tok, total_tokens=p_tok + c_tok)
 
                     if getattr(attempt_token_usage, "cost_usd", 0.0) == 0.0:

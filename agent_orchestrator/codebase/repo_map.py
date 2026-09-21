@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .graph import CodebaseGraph
 from .symbols import SymbolNode
+from ..context.token_estimator import estimate_tokens
 
 
 class PageRankRepoMap:
@@ -117,7 +118,7 @@ class PageRankRepoMap:
 
         for rank_score, fp, syms in ranked_files:
             file_header = f"\n📁 {fp}:"
-            est_tokens = max(1, len(file_header) // 4)
+            est_tokens = estimate_tokens(file_header)
             if used_tokens + est_tokens > max_tokens:
                 lines.append("\n... [Remaining low-centrality files omitted to respect token budget] ...")
                 break
@@ -143,7 +144,7 @@ class PageRankRepoMap:
                 kind_tag = f"[{sym.kind}]"
                 doc = f" - {sym.docstring}" if sym.docstring else ""
                 sig_line = f"{indent}• {kind_tag} {sym.name}{sym.signature}{doc}"
-                sym_toks = max(1, len(sig_line) // 4)
+                sym_toks = estimate_tokens(sig_line)
 
                 if used_tokens + sym_toks > max_tokens:
                     lines.append(f"{indent}• ... [Additional symbols omitted]")

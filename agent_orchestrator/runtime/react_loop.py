@@ -508,7 +508,9 @@ class ReActAgentLoop:
 
             # Estimate prompt tokens
             turn_prompt_str = json.dumps(messages, default=str)
-            total_prompt_tokens += max(1, len(turn_prompt_str) // 4)
+            from ..context.token_estimator import estimate_tokens
+            turn_p_tok = estimate_tokens(turn_prompt_str)
+            total_prompt_tokens += turn_p_tok
 
             llm_response = None
             t_llm_start = time.time()
@@ -620,10 +622,11 @@ class ReActAgentLoop:
             final_out_direct = llm_response.get("final_output")
 
             # Accumulate completion tokens and compute turn cost
-            turn_c_tok = max(1, len(str(content)) // 4)
+            from ..context.token_estimator import estimate_tokens
+            turn_c_tok = estimate_tokens(str(content))
             total_completion_tokens += turn_c_tok
 
-            turn_p_tok = max(1, len(turn_prompt_str) // 4)
+            turn_p_tok = estimate_tokens(turn_prompt_str)
             turn_llm_cost = cost_engine.calculate_llm_cost(
                 model=str(model or "auto"),
                 prompt_tokens=turn_p_tok,

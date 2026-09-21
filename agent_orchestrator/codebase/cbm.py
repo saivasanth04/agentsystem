@@ -12,6 +12,7 @@ from .architecture import ArchitectureAnalyzer, ArchitectureSummary
 from .graph import CodebaseGraph
 from .semantic_index import SemanticCodeIndex
 from .symbols import SymbolNode
+from ..context.token_estimator import estimate_tokens
 
 
 @dataclass
@@ -354,7 +355,7 @@ class CodebaseMemory:
             lines.append("\n### Architectural Conventions:")
             for as_line in focal_arch_slices:
                 lines.append(as_line)
-                used_tokens += max(1, len(as_line) // 4)
+                used_tokens += estimate_tokens(as_line)
 
         # Focal Target Symbols
         focal_sym_nodes = [self.nodes[nid] for nid in focal_node_ids if nid in self.nodes and self.nodes[nid].kind != "file"]
@@ -366,7 +367,7 @@ class CodebaseMemory:
                 sig_line = f"  • [{node.kind}] {sig_display} ({node.filepath}:{node.line})"
                 if doc:
                     sig_line += f"\n{doc}"
-                tok = max(1, len(sig_line) // 4)
+                tok = estimate_tokens(sig_line)
                 if used_tokens + tok > max_tokens:
                     break
                 lines.append(sig_line)
@@ -381,7 +382,7 @@ class CodebaseMemory:
                 sig_line = f"  • [{node.kind}] {sig_display} ({node.filepath}:{node.line})"
                 if doc:
                     sig_line += f"\n{doc}"
-                tok = max(1, len(sig_line) // 4)
+                tok = estimate_tokens(sig_line)
                 if used_tokens + tok > max_tokens:
                     lines.append("  • ... [Remaining interface contracts omitted to fit token budget]")
                     break
@@ -472,7 +473,7 @@ class CodebaseMemory:
             doc = f" - {node.docstring}" if node.docstring else ""
             sig_display = node.signature if (node.signature.startswith("def ") or node.signature.startswith("class ") or node.signature.startswith("async def ")) else f"{node.label}{node.signature}"
             line_str = f"• [{node.kind}] {sig_display} ({node.filepath}:{node.line}){doc}"
-            tok = max(1, len(line_str) // 4)
+            tok = estimate_tokens(line_str)
             if used_tokens + tok > max_tokens:
                 lines.append("• ... [Remaining sub-graph nodes omitted to respect token budget]")
                 break

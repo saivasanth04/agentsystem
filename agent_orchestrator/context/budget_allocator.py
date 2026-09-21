@@ -12,23 +12,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from .compressor import ContextCompressor, CompressionLevel, JSONCompressor
 from .deduplicator import ContentDeduplicator
 
-try:
-    import tiktoken
-    _TIKTOKEN_ENC = tiktoken.get_encoding("cl100k_base")
-except Exception:
-    _TIKTOKEN_ENC = None
-
-
-def estimate_tokens(text: str) -> int:
-    """Accurately calculates or estimates token count using tiktoken or calibrated 3.3 chars/token multiplier."""
-    if not text:
-        return 0
-    if _TIKTOKEN_ENC is not None:
-        try:
-            return len(_TIKTOKEN_ENC.encode(text, disallowed_special=()))
-        except Exception:
-            pass
-    return max(1, math.ceil(len(text) / 3.3))
+from .token_estimator import estimate_tokens
 
 
 @dataclass

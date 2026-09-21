@@ -1559,7 +1559,8 @@ class BuiltinToolRegistry:
             })
         return schemas
 
-    def call_tool(self, name: str, arguments: Dict[str, Any], caller_role: Optional[str] = None) -> Any:
+    def call_tool(self, name: str, arguments: Optional[Dict[str, Any]] = None, caller_role: Optional[str] = None) -> Any:
+        arguments = arguments if isinstance(arguments, dict) else {}
         exec_res = self.execute(name, arguments, caller_role=caller_role)
         if exec_res.success:
             if isinstance(exec_res.data, dict):

@@ -12,6 +12,7 @@ from enum import Enum
 from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
+from .token_estimator import estimate_tokens
 
 
 class ContextTier(str, Enum):
@@ -86,12 +87,12 @@ class RelevanceRanker:
             if not content:
                 content = "[File to be created or currently empty]"
 
-            est_tok = max(1, len(content) // 4)
+            est_tok = estimate_tokens(content)
             if focal_used_tokens + est_tok > max_focal_tokens:
                 avail = max(200, max_focal_tokens - focal_used_tokens)
                 lines = content.splitlines()
                 content = "\n".join(lines[:avail]) + f"\n... [Truncated to {avail} lines to fit focal budget] ..."
-                est_tok = max(1, len(content) // 4)
+                est_tok = estimate_tokens(content)
 
             focal_used_tokens += est_tok
             formatted = f"```\n// File: {fp} (Focal Target)\n{content}\n```"
@@ -105,7 +106,7 @@ class RelevanceRanker:
 
         interface_used_tokens = 0
         if cbm_slice:
-            cbm_tok = max(1, len(cbm_slice) // 4)
+            cbm_tok = estimate_tokens(cbm_slice)
             ranked_items.append(RankedContextItem(
                 filepath="codebase_memory://subgraph",
                 tier=ContextTier.INTERFACE,
@@ -134,7 +135,7 @@ class RelevanceRanker:
             else:
                 content = f"// Module Reference: {ip} (Dependent module)"
 
-            est_tok = max(1, len(content) // 4)
+            est_tok = estimate_tokens(content)
             if interface_used_tokens + est_tok > max_interface_tokens:
                 break
 

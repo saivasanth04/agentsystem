@@ -11,6 +11,7 @@ from enum import Enum
 import json
 import re
 from typing import Any, Dict, List, Optional, Set, Union
+from .token_estimator import estimate_tokens
 
 
 class CompressionLevel(str, Enum):
@@ -233,11 +234,11 @@ class JSONCompressor:
 
         # First attempt: indented for readability
         formatted = json.dumps(pruned, indent=2, default=str)
-        est_tokens = len(formatted) // 4
+        est_tokens = estimate_tokens(formatted)
         if max_tokens and est_tokens > max_tokens:
             # Second attempt: compact minification
             formatted = json.dumps(pruned, separators=(",", ":"), default=str)
-            est_tokens = len(formatted) // 4
+            est_tokens = estimate_tokens(formatted)
             if est_tokens > max_tokens:
                 # Third attempt: aggressive list pruning
                 aggressive = cls.prune_structure(pruned, prune_empty=True, prune_keys=prune_keys, max_list_items=3)
@@ -314,7 +315,7 @@ class ContextCompressor:
         if not content:
             return ""
 
-        est_tokens = max(1, len(content) // 4)
+        est_tokens = estimate_tokens(content)
         if est_tokens <= max_tokens:
             return content
 
@@ -325,7 +326,7 @@ class ContextCompressor:
         if hint == "json" or (stripped.startswith("{") and stripped.endswith("}")) or (stripped.startswith("[") and stripped.endswith("]")):
             try:
                 compressed_json = JSONCompressor.compress(stripped, max_tokens=max_tokens)
-                if len(compressed_json) // 4 <= max_tokens:
+                if estimate_tokens(compressed_json) <= max_tokens:
                     return compressed_json
             except Exception:
                 pass
@@ -333,24 +334,24 @@ class ContextCompressor:
         # 2. Log / Test Results Detection
         if hint in ("log", "terminal", "test_output") or "Traceback (most recent call last)" in content or "=== test session starts ===" in content:
             compressed_log = LogCompressor.compress(content, max_lines=max(15, max_tokens // 4))
-            if len(compressed_log) // 4 <= max_tokens:
+            if estimate_tokens(compressed_log) <= max_tokens:
                 return compressed_log
 
         # 3. Code Content Detection
         if hint in ("code", "python") or "def " in content or "class " in content or "import " in content:
             # Try Level: COMMENTS first
             c_comments = CodeCompressor.compress(content, level=CompressionLevel.COMMENTS)
-            if len(c_comments) // 4 <= max_tokens:
+            if estimate_tokens(c_comments) <= max_tokens:
                 return c_comments
 
             # Try Level: SKELETON
             c_skeleton = CodeCompressor.compress(content, level=CompressionLevel.SKELETON)
-            if len(c_skeleton) // 4 <= max_tokens:
+            if estimate_tokens(c_skeleton) <= max_tokens:
                 return c_skeleton
 
         # 4. Fallback: Whitespace normalization
         norm = CodeCompressor.strip_whitespace(content)
-        if len(norm) // 4 <= max_tokens:
+        if estimate_tokens(norm) <= max_tokens:
             return norm
 
         return norm

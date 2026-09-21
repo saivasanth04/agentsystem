@@ -15,6 +15,7 @@ import re
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from ..security.trust_boundaries import TrustBoundaryEnforcer
+from .token_estimator import estimate_tokens
 
 logger = logging.getLogger("context.retrieval_hierarchy")
 
@@ -221,12 +222,12 @@ class RetrievalHierarchyEngine:
                 if not content:
                     content = "[File currently empty or pending creation]"
 
-                est_tok = max(1, len(content) // 4)
+                est_tok = estimate_tokens(content)
                 if used_l1 + est_tok > l1_budget:
                     avail_lines = max(50, (l1_budget - used_l1) * 3)
                     lines = content.splitlines()
                     content = "\n".join(lines[:avail_lines]) + f"\n... [Truncated to {avail_lines} lines to fit Level 1 budget] ..."
-                    est_tok = max(1, len(content) // 4)
+                    est_tok = estimate_tokens(content)
 
                 formatted = TrustBoundaryEnforcer.wrap_untrusted_content(
                     content,
@@ -325,7 +326,7 @@ class RetrievalHierarchyEngine:
                 else:
                     content = f"// Dependent Module: {dp} (Signature interface)"
 
-                est_tok = max(1, len(content) // 4)
+                est_tok = estimate_tokens(content)
                 if used_l2 + est_tok > l2_budget:
                     break
 
@@ -369,7 +370,7 @@ class RetrievalHierarchyEngine:
                             identifier=rfp,
                             header=f"// Semantic Match: {rfp} ({sym_name})",
                         )
-                        est_tok = max(1, len(formatted) // 4)
+                        est_tok = estimate_tokens(formatted)
 
                         if used_l3 + est_tok > l3_budget:
                             break
@@ -420,7 +421,7 @@ class RetrievalHierarchyEngine:
 
             if arch_rules:
                 content = "Architectural Boundaries & Layer Rules:\n" + "\n".join(arch_rules)
-                est_tok = max(1, len(content) // 4)
+                est_tok = estimate_tokens(content)
                 if est_tok <= l4_budget:
                     bundle.items.append(HierarchicalContextItem(
                         level=RetrievalLevel.LEVEL_4_ARCHITECTURE_KNOWLEDGE,
@@ -460,7 +461,7 @@ class RetrievalHierarchyEngine:
                         repo_map_content += "\n".join(f"• {f}" for f in map_res.data["files"][:25])
 
             if repo_map_content:
-                est_tok = max(1, len(repo_map_content) // 4)
+                est_tok = estimate_tokens(repo_map_content)
                 bundle.items.append(HierarchicalContextItem(
                     level=RetrievalLevel.LEVEL_5_BROADER_REPOSITORY,
                     source_type="repo_map",
