@@ -20,7 +20,7 @@ from .task_graph import (
     ObservationRecord,
 )
 from .verification import TaskVerificationGate, VerificationResult
-from ..tools.workspace import SandboxedWorkspace
+from ..tools.workspace import SandboxedWorkspace, MergeConflictError
 
 
 
@@ -473,9 +473,26 @@ class ConcurrentDAGScheduler:
                 if v_res.passed:
                     try:
                         merged = sandbox.merge_into_main()
+                    except MergeConflictError as mce:
+                        v_res.passed = False
+                        merge_err = f"Workspace merge conflict on '{mce.filepath}': {mce.message}"
+                        v_res.failure_reasons.append(merge_err)
+                        attempt_rec.status = "FAILED"
+                        attempt_rec.errors.append(merge_err)
+                        attempt_rec.verification_result = {
+                            "passed": False,
+                            "verified_outputs": v_res.verified_outputs,
+                            "failure_reasons": v_res.failure_reasons,
+                            "merge_conflict": {
+                                "filepath": mce.filepath,
+                                "base_hash": mce.base_hash,
+                                "current_hash": mce.current_hash,
+                                "sandbox_id": mce.sandbox_id,
+                            },
+                        }
                     except Exception as me:
                         v_res.passed = False
-                        merge_err = f"Workspace merge conflict: {str(me)}"
+                        merge_err = f"Workspace merge error: {str(me)}"
                         v_res.failure_reasons.append(merge_err)
                         attempt_rec.status = "FAILED"
                         attempt_rec.errors.append(merge_err)

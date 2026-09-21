@@ -85,7 +85,8 @@ class ContextCompactor:
 
     @classmethod
     def compact(cls, messages: List[Dict[str, Any]], max_tokens: int = 64000) -> Tuple[List[Dict[str, Any]], bool]:
-        est_tokens = len(json.dumps(messages, default=str)) // 4
+        from ..context.budget_allocator import estimate_tokens
+        est_tokens = estimate_tokens(json.dumps(messages, default=str))
         if est_tokens <= max_tokens or len(messages) <= 6:
             return messages, False
 

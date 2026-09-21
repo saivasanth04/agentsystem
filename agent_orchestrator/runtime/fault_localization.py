@@ -461,7 +461,44 @@ class EmpiricalFaultLocalizer:
                             parsed_failure=parsed,
                         )
 
-        # 6. Fallback default
+        # 6. Check for repeated attempt failures & specification / architecture contract mismatches
+        if review_info and isinstance(review_info, dict):
+            r_str = str(review_info).lower()
+            if any(term in r_str for term in ["spec mismatch", "spec_mismatch", "contradictory requirement", "infeasible criteria", "missing acceptance spec"]):
+                return FaultLocus(
+                    primary_file=None,
+                    locus_type="SPEC_OR_CONFIG",
+                    ground_truth_attribution="SPECIFICATION",
+                    confidence=0.90,
+                    rationale="Specification mismatch or contradictory requirements identified during verification review.",
+                    parsed_failure=parsed,
+                )
+            if any(term in r_str for term in ["circular dependency", "architecture mismatch", "interface incompatible", "contract mismatch"]):
+                return FaultLocus(
+                    primary_file=None,
+                    locus_type="SPEC_OR_CONFIG",
+                    ground_truth_attribution="ARCHITECTURE",
+                    confidence=0.90,
+                    rationale="Architectural dependency loop or cross-module interface contract mismatch detected.",
+                    parsed_failure=parsed,
+                )
+
+        if failed_tasks:
+            for task in failed_tasks:
+                attempts = getattr(task, "attempts", [])
+                if len(attempts) >= 2:
+                    # Multi-attempt repeated failure where syntax is valid indicates upstream spec/criteria issue
+                    if not (parsed and parsed.is_syntax_or_import_error):
+                        return FaultLocus(
+                            primary_file=None,
+                            locus_type="SPEC_OR_CONFIG",
+                            ground_truth_attribution="SPECIFICATION",
+                            confidence=0.88,
+                            rationale=f"Task '{getattr(task, 'task_id', 'unknown')}' failed across {len(attempts)} consecutive attempts with valid syntax; escalating to SPECIFICATION for criteria re-evaluation.",
+                            parsed_failure=parsed,
+                        )
+
+        # 7. Fallback default
         return FaultLocus(
             primary_file=None,
             locus_type="APPLICATION_CODE",
@@ -520,6 +557,15 @@ class AdversarialAttributionArbiter:
                         "SYSTEM",
                         True,
                         f"Adversarial Veto: Reviewer attributed fix to {raw_llm}, but empirical evidence confirms an environment/framework failure ({empirical_locus.rationale}). Overriding to SYSTEM."
+                    )
+
+            # Rule 4: Upstream Specification or Architecture failure CANNOT be dumped on CODER
+            if empirical_locus.locus_type == "SPEC_OR_CONFIG" and gt_agent in ("SPECIFICATION", "ARCHITECTURE"):
+                if raw_llm in ("CODER", "TESTER"):
+                    return (
+                        gt_agent,
+                        True,
+                        f"Adversarial Veto: Reviewer attributed fix to {raw_llm}, but empirical analysis confirmed upstream {gt_agent} defect ({empirical_locus.rationale}). Overriding to {gt_agent}."
                     )
 
         # In all other cases, accept the LLM suggestion or align with ground truth

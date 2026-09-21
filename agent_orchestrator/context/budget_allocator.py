@@ -6,10 +6,29 @@ deduplicating content blocks, applying multi-modal compression, and trimming low
 from dataclasses import dataclass, field
 import hashlib
 import json
+import math
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .compressor import ContextCompressor, CompressionLevel, JSONCompressor
 from .deduplicator import ContentDeduplicator
+
+try:
+    import tiktoken
+    _TIKTOKEN_ENC = tiktoken.get_encoding("cl100k_base")
+except Exception:
+    _TIKTOKEN_ENC = None
+
+
+def estimate_tokens(text: str) -> int:
+    """Accurately calculates or estimates token count using tiktoken or calibrated 3.3 chars/token multiplier."""
+    if not text:
+        return 0
+    if _TIKTOKEN_ENC is not None:
+        try:
+            return len(_TIKTOKEN_ENC.encode(text, disallowed_special=()))
+        except Exception:
+            pass
+    return max(1, math.ceil(len(text) / 3.3))
 
 
 @dataclass
@@ -46,7 +65,7 @@ class ContextSection:
 
     @property
     def estimated_tokens(self) -> int:
-        return max(1, len(self.content) // 4)
+        return estimate_tokens(self.content)
 
 
 class ContextAssembler:
@@ -62,7 +81,7 @@ class ContextAssembler:
 
     @staticmethod
     def estimate_tokens(text: str) -> int:
-        return max(1, len(text) // 4)
+        return estimate_tokens(text)
 
     def is_duplicate(self, text: str) -> bool:
         """Checks if a text block has already been included using SHA-256 hash."""

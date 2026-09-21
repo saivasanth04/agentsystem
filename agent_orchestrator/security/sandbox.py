@@ -358,6 +358,39 @@ class LocalProcessSandbox(BaseExecutionSandbox):
 
         effective_timeout = timeout if timeout is not None else self.policy.timeout_seconds
         target_dir = Path(cwd).resolve() if cwd else self.working_dir
+
+        # Boundary Confinement: verify cwd does not escape sandbox working_dir if configured
+        if cwd and self.working_dir:
+            try:
+                base_ws = self.working_dir.resolve()
+                if not target_dir.is_relative_to(base_ws):
+                    return SandboxResult(
+                        exit_code=126,
+                        stdout="",
+                        stderr=f"Security Violation: Working directory '{cwd}' escapes sandbox boundary '{self.working_dir}'.",
+                        duration_seconds=0.0,
+                        success=False,
+                        timed_out=False,
+                        killed_due_to_limit=True,
+                        redacted_secrets_count=0,
+                        command=cmd,
+                    )
+            except (ValueError, AttributeError):
+                try:
+                    target_dir.relative_to(self.working_dir.resolve())
+                except ValueError:
+                    return SandboxResult(
+                        exit_code=126,
+                        stdout="",
+                        stderr=f"Security Violation: Working directory '{cwd}' escapes sandbox boundary '{self.working_dir}'.",
+                        duration_seconds=0.0,
+                        success=False,
+                        timed_out=False,
+                        killed_due_to_limit=True,
+                        redacted_secrets_count=0,
+                        command=cmd,
+                    )
+
         cmd_str = cmd if isinstance(cmd, str) else " ".join(cmd)
 
         # 1. Destructive command safety guard
