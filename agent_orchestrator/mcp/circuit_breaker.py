@@ -25,6 +25,7 @@ class CircuitState(str, Enum):
 class MCPCircuitBreaker:
     """
     Per-server Circuit Breaker with sliding failure count and automatic recovery timeout.
+    Thread-safe and race-free under high-concurrency loads.
     """
 
     def __init__(
@@ -44,6 +45,7 @@ class MCPCircuitBreaker:
         self._last_failure_time: Optional[float] = None
         self._last_state_change: float = time.time()
         self._successful_trials: int = 0
+        self._in_flight_trials: int = 0
         self._last_error: Optional[str] = None
         self._lock = threading.Lock()
 
@@ -56,6 +58,7 @@ class MCPCircuitBreaker:
                     self._state = CircuitState.HALF_OPEN
                     self._last_state_change = time.time()
                     self._successful_trials = 0
+                    self._in_flight_trials = 0
                     logger.info(f"Circuit breaker for '{self.server_name}' transitioned from OPEN to HALF_OPEN (probing recovery).")
             return self._state
 
@@ -70,13 +73,24 @@ class MCPCircuitBreaker:
             return self._last_error
 
     def can_attempt(self) -> bool:
-        """Determines if a request or health probe is allowed to proceed."""
-        current_state = self.state
+        """Determines if a request or health probe is allowed to proceed (atomic check & claim)."""
         with self._lock:
-            if current_state == CircuitState.CLOSED:
+            # Check if recovery timeout has elapsed while in OPEN state
+            if self._state == CircuitState.OPEN:
+                if time.time() - self._last_state_change >= self.recovery_timeout:
+                    self._state = CircuitState.HALF_OPEN
+                    self._last_state_change = time.time()
+                    self._successful_trials = 0
+                    self._in_flight_trials = 0
+                    logger.info(f"Circuit breaker for '{self.server_name}' transitioned from OPEN to HALF_OPEN (probing recovery).")
+
+            if self._state == CircuitState.CLOSED:
                 return True
-            if current_state == CircuitState.HALF_OPEN:
-                return self._successful_trials < self.half_open_max_trials
+            if self._state == CircuitState.HALF_OPEN:
+                if self._in_flight_trials + self._successful_trials < self.half_open_max_trials:
+                    self._in_flight_trials += 1
+                    return True
+                return False
             return False  # OPEN
 
     def record_success(self) -> None:
@@ -84,10 +98,13 @@ class MCPCircuitBreaker:
         with self._lock:
             self._failure_count = 0
             self._last_error = None
+            if self._in_flight_trials > 0:
+                self._in_flight_trials -= 1
             if self._state != CircuitState.CLOSED:
                 self._state = CircuitState.CLOSED
                 self._last_state_change = time.time()
                 self._successful_trials = 0
+                self._in_flight_trials = 0
                 logger.info(f"Circuit breaker for '{self.server_name}' reset to CLOSED (healthy).")
 
     def record_failure(self, error: Optional[Exception] = None) -> None:
@@ -96,11 +113,14 @@ class MCPCircuitBreaker:
             self._failure_count += 1
             self._last_failure_time = time.time()
             self._last_error = str(error) if error else "Unspecified error"
+            if self._in_flight_trials > 0:
+                self._in_flight_trials -= 1
 
             if self._state == CircuitState.HALF_OPEN:
                 # Canary failed: immediately trip back to OPEN
                 self._state = CircuitState.OPEN
                 self._last_state_change = time.time()
+                self._in_flight_trials = 0
                 logger.warning(
                     f"Canary probe failed for '{self.server_name}': {self._last_error}. Tripping back to OPEN."
                 )
@@ -108,6 +128,7 @@ class MCPCircuitBreaker:
                 if self._state != CircuitState.OPEN:
                     self._state = CircuitState.OPEN
                     self._last_state_change = time.time()
+                    self._in_flight_trials = 0
                     logger.warning(
                         f"Circuit breaker for '{self.server_name}' tripped to OPEN after {self._failure_count} consecutive failures. Last error: {self._last_error}"
                     )
@@ -118,6 +139,7 @@ class MCPCircuitBreaker:
             self._state = CircuitState.OPEN
             self._last_state_change = time.time()
             self._last_error = reason
+            self._in_flight_trials = 0
             logger.warning(f"Circuit breaker for '{self.server_name}' explicitly tripped to OPEN: {reason}")
 
     def reset(self) -> None:
@@ -128,6 +150,7 @@ class MCPCircuitBreaker:
             self._last_error = None
             self._last_state_change = time.time()
             self._successful_trials = 0
+            self._in_flight_trials = 0
 
     def to_dict(self) -> Dict[str, Any]:
         with self._lock:

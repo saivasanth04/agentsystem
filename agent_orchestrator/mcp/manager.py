@@ -5,6 +5,7 @@ Manages server lifecycle, connections, tool discovery, dynamic dispatch, circuit
 import json
 import logging
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -51,6 +52,7 @@ class MCPManager:
         self._tool_to_server: Dict[str, str] = {}
         self._server_configs: Dict[str, Dict[str, Any]] = {}
         self._circuit_breakers: Dict[str, MCPCircuitBreaker] = {}
+        self._lock = threading.Lock()
 
         # Auto-register embedded standard reference servers
         self._init_standard_reference_servers()
@@ -68,10 +70,11 @@ class MCPManager:
         self.register_in_memory_server(mem_server)
 
     def get_circuit_breaker(self, server_name: str) -> MCPCircuitBreaker:
-        """Retrieve or initialize the circuit breaker for a given MCP server."""
-        if server_name not in self._circuit_breakers:
-            self._circuit_breakers[server_name] = MCPCircuitBreaker(server_name=server_name)
-        return self._circuit_breakers[server_name]
+        """Retrieve or initialize the circuit breaker for a given MCP server (thread-safe)."""
+        with self._lock:
+            if server_name not in self._circuit_breakers:
+                self._circuit_breakers[server_name] = MCPCircuitBreaker(server_name=server_name)
+            return self._circuit_breakers[server_name]
 
     def get_server_health_status(self, server_name: str) -> str:
         """
