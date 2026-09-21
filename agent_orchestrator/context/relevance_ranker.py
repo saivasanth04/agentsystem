@@ -12,6 +12,7 @@ from enum import Enum
 from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
+from ..codebase.symbols import is_module_import_match
 from .token_estimator import estimate_tokens
 
 
@@ -251,7 +252,7 @@ class RelevanceRanker:
                 if deps.get("success"):
                     for imp in deps.get("imports", []):
                         for known_file in getattr(self.code_graph, "file_to_symbols", {}):
-                            if imp in known_file or known_file.endswith(f"{imp}.py"):
+                            if is_module_import_match(imp, known_file, fp):
                                 if known_file not in focal_paths:
                                     interface_paths.add(known_file)
 

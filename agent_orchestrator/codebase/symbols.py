@@ -129,3 +129,45 @@ class DependencyNode:
             "dependent_files": self.dependent_files,
             "defined_symbols": self.defined_symbols,
         }
+
+
+def is_module_import_match(imp: str, target_fp: str, current_fp: Optional[str] = None) -> bool:
+    """
+    Deterministically evaluates whether an import identifier `imp` targets `target_fp`.
+    Guards against catastrophic false-positive substring matches (e.g. 're' matching 'relevance_ranker').
+    """
+    if not imp or not target_fp:
+        return False
+
+    clean_imp = imp.lstrip(".").strip()
+    if not clean_imp:
+        return False
+
+    from pathlib import Path
+    tgt_norm = target_fp.replace("\\", "/").strip("/")
+    tgt_stem = Path(tgt_norm).stem
+    tgt_mod = tgt_norm.replace("/", ".").replace(".py", "").replace(".ts", "").replace(".js", "")
+
+    # 1. Exact module path match
+    if clean_imp == tgt_mod:
+        return True
+
+    # 2. Exact stem match (e.g. 'relevance_ranker')
+    if clean_imp == tgt_stem:
+        if current_fp:
+            curr_dir = str(Path(current_fp.replace("\\", "/")).parent).replace("\\", "/")
+            tgt_dir = str(Path(tgt_norm).parent).replace("\\", "/")
+            if curr_dir == tgt_dir or imp.startswith("."):
+                return True
+        return True
+
+    # 3. Suffix dot-boundary match (e.g. 'context.relevance_ranker' matches 'agent_orchestrator.context.relevance_ranker')
+    if clean_imp.endswith("." + tgt_stem) and (tgt_mod == clean_imp or tgt_mod.endswith("." + clean_imp)):
+        return True
+
+    # 4. Target module is a submodule of target package
+    if tgt_mod.endswith("." + clean_imp):
+        return True
+
+    return False
+

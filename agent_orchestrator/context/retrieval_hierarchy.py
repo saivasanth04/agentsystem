@@ -15,6 +15,7 @@ import re
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from ..security.trust_boundaries import TrustBoundaryEnforcer
+from ..codebase.symbols import is_module_import_match
 from .token_estimator import estimate_tokens
 
 logger = logging.getLogger("context.retrieval_hierarchy")
@@ -259,18 +260,9 @@ class RetrievalHierarchyEngine:
                     deps = self.code_graph.get_dependencies(fp)
                     if deps.get("success"):
                         for imp in deps.get("imports", []):
-                            imp_clean = imp.replace(".", "/")
                             for kf in getattr(self.code_graph, "file_to_symbols", {}):
                                 kf_norm = kf.replace("\\", "/")
-                                mod_dot = kf_norm.replace("/", ".").replace(".py", "")
-                                if (
-                                    imp == mod_dot
-                                    or imp in mod_dot
-                                    or mod_dot.endswith(imp)
-                                    or imp_clean in kf_norm
-                                    or kf_norm.endswith(f"{imp_clean}.py")
-                                    or Path(kf_norm).stem == imp
-                                ):
+                                if is_module_import_match(imp, kf_norm, fp):
                                     if kf_norm not in focal_paths:
                                         dep_paths.add(kf_norm)
 

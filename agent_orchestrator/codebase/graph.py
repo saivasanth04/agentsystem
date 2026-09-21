@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .cache import IncrementalCodeCache
 from .parser import ParserRegistry
-from .symbols import CallEdge, DependencyNode, ReferenceEdge, SymbolNode
+from .symbols import CallEdge, DependencyNode, ReferenceEdge, SymbolNode, is_module_import_match
 
 
 IGNORE_DIRS = {
@@ -242,9 +242,8 @@ class CodebaseGraph:
         files_to_re_resolve: Set[str] = set(affected_set)
 
         for aff_fp in affected_set:
-            mod_dot = aff_fp.replace("/", ".").replace("\\", ".").replace(".py", "")
             for fp, imps in self.file_imports.items():
-                if any(imp in mod_dot or mod_dot.endswith(imp) for imp in imps):
+                if any(is_module_import_match(imp, aff_fp, fp) for imp in imps if imp):
                     files_to_re_resolve.add(fp)
 
         # For files to re-resolve, clear their caller entries in self.call_graph
@@ -412,9 +411,7 @@ class CodebaseGraph:
             matched_file = next((f for f in self.file_to_symbols if clean_target in f), clean_target)
             direct_imports = sorted(list(self.file_imports.get(matched_file, [])))
             symbols_defined = [s.to_dict() for s in self.file_to_symbols.get(matched_file, [])]
-
-            mod_dot = matched_file.replace("/", ".").replace("\\", ".").replace(".py", "")
-            file_stem = Path(matched_file).stem
+            defined_sym_names = {s["name"].lower() for s in symbols_defined if "name" in s}
 
             # Find files that import this file or its symbols
             dependents = []
@@ -422,10 +419,8 @@ class CodebaseGraph:
                 if other_file == matched_file:
                     continue
                 if (
-                    mod_dot in imports
-                    or file_stem in imports
-                    or any(imp in mod_dot or mod_dot.endswith(imp) for imp in imports if imp)
-                    or any(s["name"].lower() in [i.lower() for i in imports] for s in symbols_defined)
+                    any(is_module_import_match(imp, matched_file, other_file) for imp in imports if imp)
+                    or any(s in [i.lower() for i in imports] for s in defined_sym_names)
                 ):
                     dependents.append(other_file)
 
@@ -546,29 +541,34 @@ class CodebaseGraph:
 
         # 1. Transitive File Dependencies (Downstream consumers of these files)
         file_queue: deque = deque([(f, 1) for f in initial_files])
+        visited_files: Set[str] = set(initial_files)
         while file_queue:
             curr_file, depth = file_queue.popleft()
-            if depth > max_depth or curr_file in visited_nodes:
+            if depth > max_depth:
                 continue
-            visited_nodes.add(curr_file)
 
             deps = self.get_dependencies(curr_file)
             for df in deps.get("dependent_files", []):
                 affected_files.add(df)
-                if df not in visited_nodes:
+                if df not in visited_files:
+                    visited_files.add(df)
                     file_queue.append((df, depth + 1))
 
         # 2. Transitive Caller Graph (Functions that call these symbols)
         sym_queue: deque = deque([(s, 1) for s in initial_symbols])
+        visited_syms: Set[str] = set(initial_symbols)
         while sym_queue:
             curr_sym, depth = sym_queue.popleft()
             if depth > max_depth:
                 continue
 
             for edge in self.reverse_call_graph.get(curr_sym, []):
-                affected_symbols.add(edge.caller_symbol)
-                affected_files.add(edge.caller_filepath)
-                if edge.caller_symbol not in affected_symbols:
+                if edge.caller_symbol:
+                    affected_symbols.add(edge.caller_symbol)
+                if edge.caller_filepath:
+                    affected_files.add(edge.caller_filepath)
+                if edge.caller_symbol and edge.caller_symbol not in visited_syms:
+                    visited_syms.add(edge.caller_symbol)
                     sym_queue.append((edge.caller_symbol, depth + 1))
 
         # 3. Categorize affected files (Implementation vs Test Suites)

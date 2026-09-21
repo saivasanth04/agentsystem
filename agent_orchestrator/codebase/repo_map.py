@@ -5,7 +5,7 @@ Builds a directed reference graph, computes PageRank centrality, and renders tok
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .graph import CodebaseGraph
-from .symbols import SymbolNode
+from .symbols import SymbolNode, is_module_import_match
 from ..context.token_estimator import estimate_tokens
 
 
@@ -42,8 +42,7 @@ class PageRankRepoMap:
                 for tgt_file in self.code_graph.file_to_symbols:
                     if tgt_file == src_file:
                         continue
-                    mod_dot = tgt_file.replace("/", ".").replace("\\", ".").replace(".py", "")
-                    if imp in mod_dot or mod_dot.endswith(imp):
+                    if is_module_import_match(imp, tgt_file, src_file):
                         out_edges.setdefault(src_file, set()).add(tgt_file)
                         in_edges.setdefault(tgt_file, set()).add(src_file)
 

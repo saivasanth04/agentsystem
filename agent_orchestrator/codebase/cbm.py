@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from .architecture import ArchitectureAnalyzer, ArchitectureSummary
 from .graph import CodebaseGraph
 from .semantic_index import SemanticCodeIndex
-from .symbols import SymbolNode
+from .symbols import SymbolNode, is_module_import_match
 from ..context.token_estimator import estimate_tokens
 
 
@@ -142,8 +142,7 @@ class CodebaseMemory:
                 for target_fp in self.code_graph.file_to_symbols:
                     if target_fp == filepath:
                         continue
-                    mod_dot = target_fp.replace("/", ".").replace("\\", ".").replace(".py", "")
-                    if imp in mod_dot or mod_dot.endswith(imp):
+                    if is_module_import_match(imp, target_fp, filepath):
                         tgt_file_id = f"file:{target_fp}"
                         self._add_edge(src_file_id, tgt_file_id, "imports", "EXTRACTED", 1.0)
 
@@ -241,8 +240,7 @@ class CodebaseMemory:
             for target_fp in self.code_graph.file_to_symbols:
                 if target_fp == rel_path:
                     continue
-                mod_dot = target_fp.replace("/", ".").replace("\\", ".").replace(".py", "")
-                if imp in mod_dot or mod_dot.endswith(imp):
+                if is_module_import_match(imp, target_fp, rel_path):
                     tgt_file_id = f"file:{target_fp}"
                     self._add_edge(file_node_id, tgt_file_id, "imports", "EXTRACTED", 1.0)
 
@@ -449,6 +447,12 @@ class CodebaseMemory:
                         visited.add(tgt_id)
                         traversed_nodes.append(self.nodes[tgt_id])
                         stack.append(tgt_id)
+                for src_id, rel, weight in self.reverse_adj_list.get(curr_id, []):
+                    traversed_edges.append({"source": src_id, "target": curr_id, "relation": rel})
+                    if src_id not in visited and src_id in self.nodes:
+                        visited.add(src_id)
+                        traversed_nodes.append(self.nodes[src_id])
+                        stack.append(src_id)
                 if len(traversed_nodes) >= 20:
                     break
         else:  # BFS
@@ -461,6 +465,12 @@ class CodebaseMemory:
                         visited.add(tgt_id)
                         traversed_nodes.append(self.nodes[tgt_id])
                         queue.append(tgt_id)
+                for src_id, rel, weight in self.reverse_adj_list.get(curr_id, []):
+                    traversed_edges.append({"source": src_id, "target": curr_id, "relation": rel})
+                    if src_id not in visited and src_id in self.nodes:
+                        visited.add(src_id)
+                        traversed_nodes.append(self.nodes[src_id])
+                        queue.append(src_id)
                 if len(traversed_nodes) >= 20:
                     break
 
