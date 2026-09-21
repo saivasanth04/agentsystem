@@ -98,6 +98,20 @@ class UnifiedToolDispatcher:
 
         return schemas
 
+    def get_all_tools(self) -> List[Any]:
+        """Returns all unique tools across builtin and healthy MCP servers."""
+        tools = list(self.builtin_registry.get_all_tools())
+        if self.mcp_manager:
+            for server_info in self.mcp_manager.discover_servers():
+                s_name = server_info["server_name"]
+                if self.mcp_manager.get_server_health_status(s_name) != "UNHEALTHY":
+                    tools.extend(self.mcp_manager.discover_tools(server_name=s_name))
+        return tools
+
+    def get_tools(self) -> List[Any]:
+        """Alias for get_all_tools()."""
+        return self.get_all_tools()
+
     def get_tools_for_agent(self, agent_name: str) -> List[Any]:
         """
         Returns tool items accessible to the agent (builtin tools + healthy MCP tools).

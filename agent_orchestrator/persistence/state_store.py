@@ -49,6 +49,7 @@ class SQLiteStateStore:
 
         self._local = threading.local()
         self._lock = threading.RLock()
+        self._all_conns = set()
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
@@ -61,10 +62,12 @@ class SQLiteStateStore:
                 conn.execute("PRAGMA synchronous = NORMAL;")
             conn.execute("PRAGMA foreign_keys = ON;")
             self._local.conn = conn
+            with self._lock:
+                self._all_conns.add(conn)
         return self._local.conn
 
     def close(self):
-        """Closes thread-local database connection if open."""
+        """Closes all database connections across all threads."""
         with self._lock:
             if hasattr(self._local, "conn") and self._local.conn is not None:
                 try:
@@ -72,6 +75,12 @@ class SQLiteStateStore:
                 except Exception:
                     pass
                 self._local.conn = None
+            for conn in list(self._all_conns):
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            self._all_conns.clear()
 
     def _init_db(self):
         """Initializes database schema tables and indices."""

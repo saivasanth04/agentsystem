@@ -583,6 +583,20 @@ class ConcurrentDAGScheduler:
                                 correlation_id=task_id,
                             )
                         )
+                    if hasattr(orchestrator, "swarm_coordinator") and orchestrator.swarm_coordinator and hasattr(orchestrator.swarm_coordinator, "blackboard"):
+                        try:
+                            orchestrator.swarm_coordinator.blackboard.post(
+                                task_id=task_id,
+                                key="deliverables",
+                                value={
+                                    "verified_outputs": v_res.verified_outputs,
+                                    "merged_files": merged,
+                                    "agent": agent.name,
+                                    "summary": res.get("summary", "") if isinstance(res, dict) else str(res),
+                                }
+                            )
+                        except Exception:
+                            pass
                 else:
                     if wm and v_res.failure_reasons:
                         wm.record_pitfall(f"Task [{task_id}] '{step_name}' failed verification: {'; '.join(v_res.failure_reasons[:2])}")

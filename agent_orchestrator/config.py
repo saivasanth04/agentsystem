@@ -15,12 +15,6 @@ DEFAULT_KEY = secret_manager.get_secret("api_key", default="mock-key-for-testing
 class OrchestratorConfig:
     api_key: str = ""
     base_url: str = os.getenv("GATEWAY_BASE_URL", os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:8000/v1"))
-
-    def __post_init__(self):
-        if not self.api_key:
-            self.api_key = secret_manager.get_secret("api_key", default="mock-key-for-testing")
-        else:
-            secret_manager.register_secret(self.api_key)
     default_model: str = os.getenv("ORCHESTRATOR_MODEL", "auto")
     planner_model: str = os.getenv("PLANNER_MODEL", "auto")
     spec_model: str = os.getenv("SPEC_MODEL", "auto")
@@ -66,8 +60,15 @@ class OrchestratorConfig:
     fallback_base_url: str = os.getenv("FALLBACK_BASE_URL", "")
     fallback_api_key: str = os.getenv("FALLBACK_API_KEY", "")
 
+    def __post_init__(self):
+        if not self.api_key:
+            self.api_key = secret_manager.get_secret("api_key", default="mock-key-for-testing")
+        else:
+            secret_manager.register_secret(self.api_key)
+
 
 # Default global instance
 config = OrchestratorConfig()
 Config = OrchestratorConfig
+
 

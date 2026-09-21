@@ -662,16 +662,31 @@ class TaskOrchestrator:
             except Exception:
                 env_context = f"\n\nDynamic Environment:\n{json.dumps(env_dict, indent=2)}"
 
+        memory_context = ""
+        if hasattr(self, "memory_engine") and self.memory_engine:
+            try:
+                primed = self.memory_engine.prime_context_for_task({"query": state["user_request"]})
+                mem_parts = []
+                if primed.get("episodic_experience"):
+                    mem_parts.append(f"Past Experiences:\n{primed['episodic_experience']}")
+                if primed.get("semantic_knowledge"):
+                    mem_parts.append(f"Semantic Knowledge:\n{primed['semantic_knowledge']}")
+                if mem_parts:
+                    memory_context = f"\n\nHistorical Memory Context:\n" + "\n".join(mem_parts)
+            except Exception:
+                pass
+
         prompt = f"""
 Analyze the user request and task understanding:
 Task Goal: "{state['user_request']}"
 Task Understanding: {json.dumps(state.get('task_understanding') or {}, indent=2)}
 
 Project Discovery Context (Ground Truth):
-{project_context}{env_context}
+{project_context}{env_context}{memory_context}
 
 Available Specialized Agent Manifests in Registry:
 {json.dumps(available_agents, indent=2)}
+
 
 INSTRUCTIONS:
 Do NOT produce an unexecutable abstract waterfall.

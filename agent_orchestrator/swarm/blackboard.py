@@ -89,7 +89,7 @@ class SwarmBlackboard:
         topic: str,
         key: str,
         data: Any,
-        author_id: str,
+        author_id: str = "SYSTEM",
         confidence: float = 1.0,
         tags: Optional[List[str]] = None,
     ) -> BlackboardEntry:

@@ -4,7 +4,13 @@ Main entry point for Unified Gateway Server.
 import argparse
 import sys
 import uvicorn
-from gateway.config import get_or_create_unified_key
+try:
+    from .config import get_or_create_unified_key
+except (ImportError, ValueError):
+    try:
+        from gateway.config import get_or_create_unified_key
+    except ImportError:
+        from unified_gateway.gateway.config import get_or_create_unified_key
 
 
 def main():
@@ -27,8 +33,9 @@ def main():
     print("=" * 65)
     print("[*] Starting server...\n")
 
+    app_target = "unified_gateway.gateway.server:app" if "unified_gateway" in sys.modules else "gateway.server:app"
     uvicorn.run(
-        "gateway.server:app",
+        app_target,
         host=args.host,
         port=args.port,
         reload=args.reload,
