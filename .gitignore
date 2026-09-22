@@ -50,3 +50,10 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Orchestrator runtime data
+.orchestrator/
+agent_orchestrator/workspace_output/
+
+# Frontend node_modules
+frontend/node_modules/

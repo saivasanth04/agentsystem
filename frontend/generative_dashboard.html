@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Orchestrator Mission Control — Generative UI Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            bg: { base: '#0B0F17', panel: '#111827', elevated: '#1F2937' },
+            accent: { primary: '#6366F1', success: '#10B981', warning: '#F59E0B', danger: '#EF4444', info: '#3B82F6', purple: '#A855F7' }
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 0.2; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .pulse-node { animation: pulse-ring 2s infinite ease-in-out; }
+  </style>
+</head>
+<body class="bg-bg-base text-gray-100 font-sans min-h-screen p-6 antialiased">
+  <div class="max-w-7xl mx-auto space-y-6">
+    <!-- Header -->
+    <header class="flex flex-wrap items-center justify-between gap-4 p-5 bg-bg-panel border border-gray-800 rounded-2xl shadow-xl">
+      <div class="flex items-center gap-3.5">
+        <div class="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center font-mono font-bold text-indigo-400">
+          MC
+        </div>
+        <div>
+          <h1 class="text-lg font-bold font-mono tracking-tight text-white flex items-center gap-2">
+            Multi-Agent Orchestrator Mission Control
+            <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-500/30">ONLINE</span>
+          </h1>
+          <p class="text-xs font-mono text-gray-400">Autonomous DAG Scheduler & Ground-Truth Verification Engine</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 font-mono text-xs">
+        <div class="bg-bg-elevated px-3 py-1.5 rounded-xl border border-gray-700 text-gray-300">
+          SESSION: <span class="text-indigo-400 font-bold" id="session-id-display">sess-09a8f2</span>
+        </div>
+        <button id="btn-step" class="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition">
+          ▶ Step DAG
+        </button>
+      </div>
+    </header>
+
+    <!-- KPI Row -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="bg-bg-panel border border-gray-800 p-4 rounded-xl">
+        <div class="text-[10px] font-mono text-gray-400 uppercase">PASS Rate</div>
+        <div class="text-2xl font-bold font-mono text-emerald-400 mt-1">94.2%</div>
+        <div class="text-[10px] font-mono text-gray-500 mt-0.5">Ground-Truth Validated</div>
+      </div>
+      <div class="bg-bg-panel border border-gray-800 p-4 rounded-xl">
+        <div class="text-[10px] font-mono text-gray-400 uppercase">Total Tokens</div>
+        <div class="text-2xl font-bold font-mono text-blue-400 mt-1" id="token-counter">314.5k</div>
+        <div class="text-[10px] font-mono text-gray-500 mt-0.5">Prompt + Completion</div>
+      </div>
+      <div class="bg-bg-panel border border-gray-800 p-4 rounded-xl">
+        <div class="text-[10px] font-mono text-gray-400 uppercase">Cumulative Cost</div>
+        <div class="text-2xl font-bold font-mono text-amber-400 mt-1" id="cost-counter">$0.3842</div>
+        <div class="text-[10px] font-mono text-gray-500 mt-0.5">Budget Cap: $5.00</div>
+      </div>
+      <div class="bg-bg-panel border border-gray-800 p-4 rounded-xl">
+        <div class="text-[10px] font-mono text-gray-400 uppercase">Active Wave</div>
+        <div class="text-2xl font-bold font-mono text-indigo-400 mt-1" id="wave-counter">Wave 2 / 3</div>
+        <div class="text-[10px] font-mono text-gray-500 mt-0.5">4 Parallel Workers</div>
+      </div>
+    </div>
+
+    <!-- Live DAG Wave Layout -->
+    <div class="bg-bg-panel border border-gray-800 rounded-2xl p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between pb-3 border-b border-gray-800">
+        <h2 class="text-xs font-mono font-bold uppercase tracking-wider text-gray-300 flex items-center gap-2">
+          <span>🕸️</span> Interactive Parallel DAG Waves
+        </h2>
+        <span class="text-xs font-mono text-gray-500">Click any task node to inspect context & tool logs</span>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6" id="dag-container">
+        <!-- Wave 1 -->
+        <div class="bg-bg-base/60 border border-gray-800 rounded-xl p-4 space-y-3">
+          <div class="flex justify-between items-center text-xs font-mono text-gray-400 pb-2 border-b border-gray-800">
+            <span class="font-bold text-indigo-400">WAVE 1: SPEC & ARCH</span>
+            <span class="text-emerald-400 font-bold">2/2 DONE</span>
+          </div>
+          <div class="p-3 bg-bg-panel border border-emerald-500/30 rounded-lg space-y-1.5 cursor-pointer hover:border-emerald-400 transition" onclick="inspectTask('T-01', 'Extract contract types', 'SPEC', 'COMPLETED')">
+            <div class="flex justify-between items-center text-xs font-mono">
+              <span class="font-bold text-emerald-400">T-01</span>
+              <span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-950 text-emerald-400">COMPLETED</span>
+            </div>
+            <p class="text-xs text-gray-300">Define Pydantic schema and JSON serialization contracts</p>
+          </div>
+          <div class="p-3 bg-bg-panel border border-emerald-500/30 rounded-lg space-y-1.5 cursor-pointer hover:border-emerald-400 transition" onclick="inspectTask('T-02', 'Scaffold workspace structures', 'ARCH', 'COMPLETED')">
+            <div class="flex justify-between items-center text-xs font-mono">
+              <span class="font-bold text-emerald-400">T-02</span>
+              <span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-950 text-emerald-400">COMPLETED</span>
+            </div>
+            <p class="text-xs text-gray-300">Set up modular directory hierarchy and test fixtures</p>
+          </div>
+        </div>
+
+        <!-- Wave 2 -->
+        <div class="bg-indigo-950/20 border border-indigo-500/40 rounded-xl p-4 space-y-3 ring-1 ring-indigo-500/30">
+          <div class="flex justify-between items-center text-xs font-mono text-gray-400 pb-2 border-b border-gray-800">
+            <span class="font-bold text-indigo-400">WAVE 2: CORE IMPL</span>
+            <span class="text-blue-400 font-bold">1 RUNNING · 1 READY</span>
+          </div>
+          <div class="p-3 bg-bg-panel border border-blue-500/60 rounded-lg space-y-1.5 cursor-pointer hover:border-blue-400 transition shadow-lg shadow-blue-950/30" onclick="inspectTask('T-03', 'Implement LRU Cache & Eviction', 'CODE', 'RUNNING')">
+            <div class="flex justify-between items-center text-xs font-mono">
+              <span class="font-bold text-blue-400 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-blue-400 animate-ping"></span>
+                T-03
+              </span>
+              <span class="px-1.5 py-0.5 rounded text-[10px] bg-blue-950 text-blue-400 font-bold">RUNNING</span>
+            </div>
+            <p class="text-xs text-gray-300">Thread-safe double linked list and hashmap eviction logic</p>
+          </div>
+          <div class="p-3 bg-bg-panel border border-gray-700 rounded-lg space-y-1.5 cursor-pointer hover:border-gray-500 transition" onclick="inspectTask('T-04', 'Write pytest test suite', 'TEST', 'READY')">
+            <div class="flex justify-between items-center text-xs font-mono">
+              <span class="font-bold text-gray-300">T-04</span>
+              <span class="px-1.5 py-0.5 rounded text-[10px] bg-gray-800 text-gray-300">READY</span>
+            </div>
+            <p class="text-xs text-gray-400">Unit test cases covering concurrency, expiration, and bounds</p>
+          </div>
+        </div>
+
+        <!-- Wave 3 -->
+        <div class="bg-bg-base/60 border border-gray-800 rounded-xl p-4 space-y-3">
+          <div class="flex justify-between items-center text-xs font-mono text-gray-400 pb-2 border-b border-gray-800">
+            <span class="font-bold text-gray-500">WAVE 3: REVIEW & GATES</span>
+            <span class="text-gray-500 font-bold">PENDING</span>
+          </div>
+          <div class="p-3 bg-bg-panel/50 border border-gray-800 rounded-lg space-y-1.5 cursor-pointer opacity-60" onclick="inspectTask('T-05', 'Execute 5-Gate Ground-Truth Review', 'REV', 'PENDING')">
+            <div class="flex justify-between items-center text-xs font-mono">
+              <span class="font-bold text-gray-500">T-05</span>
+              <span class="px-1.5 py-0.5 rounded text-[10px] bg-gray-900 text-gray-500">PENDING</span>
+            </div>
+            <p class="text-xs text-gray-500">Static AST analysis, test run execution, and diff coverage check</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Verification Matrix & Live Logs Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- 5-Gate Quality Matrix -->
+      <div class="bg-bg-panel border border-gray-800 rounded-2xl p-5 shadow-xl space-y-4">
+        <h3 class="text-xs font-mono font-bold uppercase tracking-wider text-gray-300 flex items-center gap-2">
+          <span>🛡️</span> Ground-Truth Verification Matrix
+        </h3>
+        <div class="grid grid-cols-2 gap-3 font-mono text-xs">
+          <div class="p-3 rounded-lg bg-bg-base border border-emerald-500/30 flex justify-between items-center">
+            <span class="text-gray-400">1. Build Status</span>
+            <span class="text-emerald-400 font-bold">PASS (0)</span>
+          </div>
+          <div class="p-3 rounded-lg bg-bg-base border border-emerald-500/30 flex justify-between items-center">
+            <span class="text-gray-400">2. Test Suite</span>
+            <span class="text-emerald-400 font-bold">14/14 Passed</span>
+          </div>
+          <div class="p-3 rounded-lg bg-bg-base border border-emerald-500/30 flex justify-between items-center">
+            <span class="text-gray-400">3. Static Lint</span>
+            <span class="text-emerald-400 font-bold">0 Errors</span>
+          </div>
+          <div class="p-3 rounded-lg bg-bg-base border border-emerald-500/30 flex justify-between items-center">
+            <span class="text-gray-400">4. Diff Coverage</span>
+            <span class="text-indigo-400 font-bold">96.4%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live WebSocket Log Feed -->
+      <div class="bg-bg-panel border border-gray-800 rounded-2xl p-5 shadow-xl space-y-3 font-mono text-xs flex flex-col justify-between">
+        <h3 class="font-bold uppercase tracking-wider text-gray-300 flex items-center justify-between">
+          <span>⚡ Live Event Stream</span>
+          <span class="text-[10px] text-gray-500 font-normal">WebSocket Channel Active</span>
+        </h3>
+        <div class="p-3 bg-bg-base rounded-xl border border-gray-800 space-y-2 h-40 overflow-y-auto" id="log-box">
+          <div class="text-emerald-400">[00:01:12] TASK_COMPLETED: T-01 contract schemas validated</div>
+          <div class="text-emerald-400">[00:01:28] TASK_COMPLETED: T-02 workspace scaffold generated</div>
+          <div class="text-blue-400">[00:01:30] TASK_STARTED: T-03 assigned to CoderAgent (claude-3-7-sonnet)</div>
+          <div class="text-indigo-300">[00:01:35] TOOL_INVOCATION: apply_patch on cache.py (+84 lines)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function inspectTask(id, title, role, status) {
+      alert(`[Task Inspector]\n\nTask ID: ${id}\nRole: ${role}\nStatus: ${status}\nObjective: ${title}`);
+    }
+
+    let step = 0;
+    document.getElementById('btn-step').addEventListener('click', () => {
+      step++;
+      const logBox = document.getElementById('log-box');
+      const time = new Date().toLocaleTimeString();
+      const div = document.createElement('div');
+      div.className = 'text-indigo-400';
+      div.textContent = `[${time}] ORCHESTRATOR_STEP #${step}: Parallel DAG wave iteration advanced.`;
+      logBox.appendChild(div);
+      logBox.scrollTop = logBox.scrollHeight;
+    });
+  </script>
+</body>
+</html>
