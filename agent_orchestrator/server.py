@@ -514,9 +514,19 @@ async def launch_task(req: LaunchTaskRequest, background_tasks: BackgroundTasks)
         if not target_ws_dir.exists() or not target_ws_dir.is_dir():
             raise HTTPException(status_code=400, detail=f"Workspace directory '{req.workspace_path}' does not exist or is not a directory.")
 
+        role_overrides = req.role_models or {}
         cfg = OrchestratorConfig(
             default_model=req.model or "claude-3-5-sonnet",
+            planner_model=role_overrides.get("planner", req.model or "auto"),
+            spec_model=role_overrides.get("spec", req.model or "auto"),
+            arch_model=role_overrides.get("arch", req.model or "auto"),
+            coder_model=role_overrides.get("coder", req.model or "auto"),
+            tester_model=role_overrides.get("tester", req.model or "auto"),
+            reviewer_model=role_overrides.get("reviewer", req.model or "auto"),
+            max_replan_iterations=req.max_iterations,
             max_iterations=req.max_iterations,
+            max_session_cost_usd=req.max_session_cost or 0.0,
+            max_task_tokens=req.max_tokens or 0,
         )
         if req.max_session_cost:
             budget_tracker.set_budget(max_cost_usd=req.max_session_cost)

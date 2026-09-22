@@ -43,6 +43,7 @@ class OrchestratorConfig:
 
     # Execution & Re-planning settings
     max_replan_iterations: int = int(os.getenv("MAX_REPLAN_ITERATIONS", "3"))
+    max_iterations: int = 3
     timeout_seconds: float = float(os.getenv("LLM_TIMEOUT", "90.0"))
     temperature: float = 0.4
     workspace_dir: Path = BASE_DIR / "workspace_output"
@@ -65,6 +66,12 @@ class OrchestratorConfig:
             self.api_key = secret_manager.get_secret("api_key", default="mock-key-for-testing")
         else:
             secret_manager.register_secret(self.api_key)
+
+        # Synchronize max_iterations and max_replan_iterations
+        if self.max_iterations != 3 and self.max_replan_iterations == 3:
+            self.max_replan_iterations = self.max_iterations
+        elif self.max_replan_iterations != 3 and self.max_iterations == 3:
+            self.max_iterations = self.max_replan_iterations
 
 
 # Default global instance
