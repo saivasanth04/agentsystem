@@ -419,6 +419,38 @@ class ConcurrentDAGScheduler:
                             if str(err) not in attempt_errors:
                                 attempt_errors.append(str(err))
 
+                # Enforce tool use requirement for substantive tasks declaring tools/outputs/acceptance tests
+                requires_tool_use = bool(task.required_tools or task.outputs or task.acceptance_tests)
+                has_tool_use = bool(attempt_tools or attempt_observations)
+
+                if requires_tool_use and not has_tool_use and not exec_error:
+                    prose_err = f"Substantive task execution failure: Task '{task_id}' declared tools/outputs/acceptance tests but completed through prose without invoking any tools."
+                    v_res.passed = False
+                    if prose_err not in v_res.failure_reasons:
+                        v_res.failure_reasons.append(prose_err)
+                    if prose_err not in attempt_errors:
+                        attempt_errors.append(prose_err)
+
+                # Enforce verification evidence for implementation and testing tasks
+                raw_task_caps = task.required_capabilities or []
+                is_impl_or_test = any(c.lower() in ("code-generation", "refactoring", "frontend", "backend", "coding", "implementation", "bugfix", "testing", "unit-tests", "verification", "integration-tests") for c in raw_task_caps)
+                
+                if is_impl_or_test and v_res.passed:
+                    has_evidence = bool(
+                        v_res.verified_outputs
+                        or getattr(v_res, "pipeline_report", None)
+                        or (hasattr(sandbox, "get_uncommitted_changes") and (sandbox.get_uncommitted_changes().get("created") or sandbox.get_uncommitted_changes().get("modified")))
+                        or (isinstance(res, dict) and (res.get("written_files") or res.get("test_results") or res.get("artifacts")))
+                        or getattr(task, "artifacts", None)
+                    )
+                    if not has_evidence:
+                        no_ev_err = f"Substantive task execution failure: Implementation/testing task '{task_id}' finished without concrete verification evidence."
+                        v_res.passed = False
+                        if no_ev_err not in v_res.failure_reasons:
+                            v_res.failure_reasons.append(no_ev_err)
+                        if no_ev_err not in attempt_errors:
+                            attempt_errors.append(no_ev_err)
+
                 if not v_res.passed:
                     for f_reason in v_res.failure_reasons:
                         if f_reason not in attempt_errors:

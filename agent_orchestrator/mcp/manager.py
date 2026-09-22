@@ -56,6 +56,8 @@ class MCPManager:
 
         # Auto-register embedded standard reference servers
         self._init_standard_reference_servers()
+        # Load external configured MCP servers from mcp_servers.json
+        self.load_config_file()
 
     def _init_standard_reference_servers(self) -> None:
         """Instantiate in-process reference servers for immediate out-of-the-box operation."""
