@@ -112,8 +112,8 @@ class TaskOrchestrator:
         self.active_session_id = f"sess-{int(time.time())}-{uuid.uuid4().hex[:6]}"
         self.active_execution_id = self.active_session_id
 
-        from .runtime.approval_gate import AutoApprovalGate
-        self.approval_gate = approval_gate or AutoApprovalGate()
+        from .runtime.approval_gate import PolicyBasedApprovalGate
+        self.approval_gate = approval_gate or PolicyBasedApprovalGate()
 
         # Persistence & Checkpoint Managers
         self.state_store = state_store or SQLiteStateStore(workspace_dir=self.workspace.root_dir)

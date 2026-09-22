@@ -150,8 +150,11 @@ class ReActAgentLoop:
         self.llm = llm
         self.tool_registry = tool_registry
         self.max_turns = max_turns
-        self.on_step = on_step_callback or (lambda action, payload: None)
-        self.approval_gate = approval_gate
+        if approval_gate is not None:
+            self.approval_gate = approval_gate
+        else:
+            from .approval_gate import PolicyBasedApprovalGate
+            self.approval_gate = PolicyBasedApprovalGate()
         self.enforce_react = enforce_react
         self.require_verification = require_verification
         self.event_bus = event_bus or kwargs.get("event_bus") or getattr(tool_registry, "event_bus", None)

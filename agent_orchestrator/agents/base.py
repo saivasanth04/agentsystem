@@ -34,11 +34,11 @@ class BaseAgent:
         self.tool_registry = tool_registry or BuiltinToolRegistry(self.workspace)
         self.skill_registry = skill_registry or SkillManager()
         self.mcp_client = mcp_client or MCPClientAdapter(workspace_dir=self.workspace.root_dir)
-        self.message_bus = message_bus
-        self.approval_gate = approval_gate
+        from ..runtime.approval_gate import PolicyBasedApprovalGate
+        self.approval_gate = approval_gate or PolicyBasedApprovalGate()
         self.extra_kwargs = kwargs
         self.reasoning_config = kwargs.get("reasoning_config")
-        self.react_loop = ReActAgentLoop(self.llm, self.tool_registry, approval_gate=approval_gate)
+        self.react_loop = ReActAgentLoop(self.llm, self.tool_registry, approval_gate=self.approval_gate)
 
         import uuid
         self.agent_id = kwargs.get("agent_id") or f"agent-{self.name.lower()}-{uuid.uuid4().hex[:6]}"

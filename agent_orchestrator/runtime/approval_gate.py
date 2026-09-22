@@ -274,6 +274,41 @@ class ApprovalGate(ABC):
         """Evaluates an approval request and returns an ApprovalDecision."""
         pass
 
+    def evaluate_tool_invocation(
+        self,
+        tool_name: str,
+        args: Optional[Dict[str, Any]] = None,
+        agent_name: Optional[str] = None,
+        task_id: Optional[str] = None,
+        reason: Optional[str] = None,
+    ) -> ApprovalDecision:
+        """
+        Classifies a tool invocation and checks whether approval is required and granted.
+        If non-destructive, returns auto-approved.
+        If destructive, delegates to self.request_approval.
+        """
+        safe_args = args if isinstance(args, dict) else {}
+        classified = DestructiveActionClassifier.classify_action(tool_name, safe_args)
+        if not classified:
+            return ApprovalDecision(
+                approved=True,
+                status="AUTO_APPROVED",
+                reason=f"Action '{tool_name}' is not classified as destructive.",
+                approved_by="DestructiveActionClassifier",
+            )
+        act_type, risk_lvl, target_item, act_desc = classified
+        req = ApprovalRequest(
+            action_type=act_type,
+            tool_name=tool_name,
+            target=target_item,
+            command_or_details=act_desc,
+            risk_level=risk_lvl,
+            reason=reason or f"Invocation of {tool_name} requires approval",
+            agent_name=agent_name,
+            task_id=task_id,
+        )
+        return self.request_approval(req)
+
 
 class AutoApprovalGate(ApprovalGate):
     """

@@ -261,19 +261,40 @@ class DependencyHealingEngine:
             except Exception:
                 return False
 
-        if approval_gate is not None:
-            try:
-                # Classify action in ApprovalGate
-                res = approval_gate.evaluate_tool_invocation(
+        gate = approval_gate
+        if gate is None:
+            from .approval_gate import PolicyBasedApprovalGate
+            gate = PolicyBasedApprovalGate()
+
+        try:
+            if hasattr(gate, "evaluate_tool_invocation"):
+                res = gate.evaluate_tool_invocation(
                     tool_name="terminal_execute",
                     args={"command": dependency.install_command or f"pip install {dependency.package_name}"},
+                    reason=f"Automatic dependency healing requested installation of {dependency.package_name}",
                 )
                 return getattr(res, "approved", False) or getattr(res, "allowed", False)
-            except Exception:
-                pass
+            elif hasattr(gate, "request_approval"):
+                from .approval_gate import DestructiveActionClassifier, ApprovalRequest
+                cmd = dependency.install_command or f"pip install {dependency.package_name}"
+                classified = DestructiveActionClassifier.classify_action("terminal_execute", {"command": cmd})
+                if classified:
+                    act_type, risk_lvl, target_item, act_desc = classified
+                    req = ApprovalRequest(
+                        action_type=act_type,
+                        tool_name="terminal_execute",
+                        target=target_item,
+                        command_or_details=act_desc,
+                        risk_level=risk_lvl,
+                        reason=f"Automatic dependency healing requested installation of {dependency.package_name}",
+                    )
+                    decision = gate.request_approval(req)
+                    return decision.approved
+        except Exception:
+            pass
 
-        # In non-interactive mode without explicit approval, default to True if in testing/sandbox or False if strict
-        return True
+        # In non-interactive mode without explicit approval, deny package installation
+        return False
 
     @classmethod
     def install_dependency(

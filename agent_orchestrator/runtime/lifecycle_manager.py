@@ -46,8 +46,8 @@ class AgentLifecycleManager:
         self.tool_registry = tool_registry
         self.skill_registry = skill_registry
         self.mcp_client = mcp_client
-        self.message_bus = message_bus
-        self.approval_gate = approval_gate
+        from .approval_gate import PolicyBasedApprovalGate
+        self.approval_gate = approval_gate or PolicyBasedApprovalGate()
         self.on_event = on_event_callback or (lambda stage, msg, payload=None: None)
 
         self._lock = threading.RLock()
