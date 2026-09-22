@@ -17,6 +17,10 @@ start "LLM Gateway - Port 8080" cmd /k "python -m uvicorn unified_gateway.gatewa
 echo [2/3] Starting Agent Orchestrator Backend (Port 8000)...
 start "Agent Orchestrator - Port 8000" cmd /k "set GATEWAY_BASE_URL=http://127.0.0.1:8080/v1&& python -m uvicorn agent_orchestrator.server:app --host 127.0.0.1 --port 8000 --reload"
 
+:: Wait for backend and gateway to bind sockets
+echo [*] Initializing backend services...
+ping 127.0.0.1 -n 4 >nul
+
 :: 3. Start Mission Control Frontend on port 3000
 echo [3/3] Starting Mission Control Frontend (Port 3000)...
 start "Mission Control UI - Port 3000" cmd /k "cd frontend && npm run dev"
@@ -31,7 +35,7 @@ echo  - Backend API:       http://127.0.0.1:8000/docs
 echo  - LLM Gateway:       http://127.0.0.1:8080/stats
 echo.
 echo [*] Opening browser to http://localhost:3000 ...
-ping 127.0.0.1 -n 4 >nul
+ping 127.0.0.1 -n 3 >nul
 start http://localhost:3000
 
 echo.
