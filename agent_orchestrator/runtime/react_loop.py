@@ -968,7 +968,12 @@ class ReActAgentLoop:
                                     tool_name=t_name,
                                     tool_source="mcp" if is_mcp else "builtin",
                                 ):
-                                    tool_result = self.tool_registry.call_tool(t_name, t_args)
+                                    tool_result = self.tool_registry.call_tool(
+                                        t_name,
+                                        t_args,
+                                        caller_role=agent_name,
+                                        task_permissions=permissions,
+                                    )
                                 status_str = "SUCCESS" if not (isinstance(tool_result, dict) and tool_result.get("success") is False) else "ERROR"
                                 if status_str == "ERROR" and isinstance(tool_result, dict) and "error" in tool_result:
                                     errors.append(str(tool_result["error"]))
@@ -1386,7 +1391,12 @@ class ReActAgentLoop:
                                         if h:
                                             t_args["expected_hash"] = h
                                             t_args["expected_version"] = h
-                            tool_result = self.tool_registry.call_tool(t_name, t_args)
+                            tool_result = self.tool_registry.call_tool(
+                                t_name,
+                                t_args,
+                                caller_role=agent_name,
+                                task_permissions=permissions,
+                            )
                             status_str = "SUCCESS" if not (isinstance(tool_result, dict) and tool_result.get("success") is False) else "ERROR"
                             if status_str == "ERROR" and isinstance(tool_result, dict) and "error" in tool_result:
                                 errors.append(str(tool_result["error"]))
@@ -1801,138 +1811,141 @@ class ReActAgentLoop:
                 if eval_res.suggested_action:
                     feedback += f" Suggested action: {eval_res.suggested_action}"
                 return feedback
-        except Exception:
-            pass
+        except Exception as e:
+            return f"Permission Denied: Authorization policy evaluation error ({type(e).__name__}: {str(e)})"
 
-        if not permissions:
-            return None
+        try:
+            if not permissions:
+                return None
 
-        # Check task-level FileAccessPolicy specifications
-        task_allowed_paths = getattr(permissions, "allowed_paths", None) or (permissions.get("allowed_paths") if isinstance(permissions, dict) else None)
-        task_blocked_paths = getattr(permissions, "blocked_paths", None) or (permissions.get("blocked_paths") if isinstance(permissions, dict) else None)
-        task_read_only_paths = getattr(permissions, "read_only_paths", None) or (permissions.get("read_only_paths") if isinstance(permissions, dict) else None)
+            # Check task-level FileAccessPolicy specifications
+            task_allowed_paths = getattr(permissions, "allowed_paths", None) or (permissions.get("allowed_paths") if isinstance(permissions, dict) else None)
+            task_blocked_paths = getattr(permissions, "blocked_paths", None) or (permissions.get("blocked_paths") if isinstance(permissions, dict) else None)
+            task_read_only_paths = getattr(permissions, "read_only_paths", None) or (permissions.get("read_only_paths") if isinstance(permissions, dict) else None)
 
-        if task_allowed_paths or task_blocked_paths or task_read_only_paths:
-            target_p = args.get("filepath") or args.get("path") or args.get("filename") or ""
-            if target_p:
-                from ..security.file_access_policy import FileAccessPolicy, FileAccessMode
-                fap = FileAccessPolicy(
-                    allowed_paths=task_allowed_paths or ["*"],
-                    blocked_paths=task_blocked_paths or FileAccessPolicy().blocked_paths,
-                    read_only_paths=task_read_only_paths or [],
-                )
-                mode = FileAccessMode.WRITE if tool_name in (
+            if task_allowed_paths or task_blocked_paths or task_read_only_paths:
+                target_p = args.get("filepath") or args.get("path") or args.get("filename") or ""
+                if target_p:
+                    from ..security.file_access_policy import FileAccessPolicy, FileAccessMode
+                    fap = FileAccessPolicy(
+                        allowed_paths=task_allowed_paths or ["*"],
+                        blocked_paths=task_blocked_paths or FileAccessPolicy().blocked_paths,
+                        read_only_paths=task_read_only_paths or [],
+                    )
+                    mode = FileAccessMode.WRITE if tool_name in (
+                        "write_file", "replace_file_content", "edit_file", "delete_file",
+                        "insert_lines", "delete_lines", "apply_diff_blocks", "diff_blocks",
+                        "filesystem_write", "filesystem_delete"
+                    ) else FileAccessMode.READ
+                    dec = fap.evaluate(target_p, mode)
+                    if not dec.allowed:
+                        return f"Permission Denied: {dec.reason}"
+
+            allowed_writes = getattr(permissions, "allowed_write_paths", None)
+            if isinstance(permissions, dict):
+                allowed_writes = permissions.get("allowed_write_paths")
+
+            if allowed_writes and "*" not in allowed_writes:
+                if tool_name in (
                     "write_file", "replace_file_content", "edit_file", "delete_file",
                     "insert_lines", "delete_lines", "apply_diff_blocks", "diff_blocks",
                     "filesystem_write", "filesystem_delete"
-                ) else FileAccessMode.READ
-                dec = fap.evaluate(target_p, mode)
-                if not dec.allowed:
-                    return f"Permission Denied: {dec.reason}"
+                ):
+                    target_path = args.get("filepath") or args.get("path") or args.get("filename") or ""
+                    if target_path:
+                        try:
+                            from ..tools.workspace import safe_resolve_path, PathTraversalError
+                        except (ImportError, ValueError):
+                            from agent_orchestrator.tools.workspace import safe_resolve_path, PathTraversalError
 
-        allowed_writes = getattr(permissions, "allowed_write_paths", None)
-        if isinstance(permissions, dict):
-            allowed_writes = permissions.get("allowed_write_paths")
+                        # Attempt safe resolution against workspace root
+                        ws_obj = workspace or getattr(self, "workspace", None)
+                        root_dir = getattr(ws_obj, "root_dir", None) or Path.cwd()
 
-        if allowed_writes and "*" not in allowed_writes:
-            if tool_name in (
-                "write_file", "replace_file_content", "edit_file", "delete_file",
-                "insert_lines", "delete_lines", "apply_diff_blocks", "diff_blocks",
-                "filesystem_write", "filesystem_delete"
-            ):
-                target_path = args.get("filepath") or args.get("path") or args.get("filename") or ""
-                if target_path:
-                    try:
-                        from ..tools.workspace import safe_resolve_path, PathTraversalError
-                    except (ImportError, ValueError):
-                        from agent_orchestrator.tools.workspace import safe_resolve_path, PathTraversalError
+                        try:
+                            resolved_target = safe_resolve_path(root_dir, target_path)
+                            rel_norm = str(resolved_target.relative_to(Path(root_dir).resolve())).replace("\\", "/")
+                        except PathTraversalError as pte:
+                            return f"Permission Denied: Path traversal detected: {str(pte)}"
+                        except Exception:
+                            rel_norm = str(target_path).replace("\\", "/").strip("/")
 
-                    # Attempt safe resolution against workspace root
-                    ws_obj = workspace or getattr(self, "workspace", None)
-                    root_dir = getattr(ws_obj, "root_dir", None) or Path.cwd()
+                        matched = False
+                        for p in allowed_writes:
+                            norm_p = str(p).replace("\\", "/").strip("/")
+                            if norm_p == "*":
+                                matched = True
+                                break
+                            clean_pattern = norm_p.rstrip("*").rstrip("/")
+                            if (
+                                rel_norm == clean_pattern
+                                or rel_norm.startswith(clean_pattern + "/")
+                                or fnmatch.fnmatch(rel_norm, norm_p)
+                            ):
+                                matched = True
+                                break
+                        if not matched:
+                            return f"Permission Denied: Write operation on '{target_path}' is outside allowed paths {allowed_writes}."
 
-                    try:
-                        resolved_target = safe_resolve_path(root_dir, target_path)
-                        rel_norm = str(resolved_target.relative_to(Path(root_dir).resolve())).replace("\\", "/")
-                    except PathTraversalError as pte:
-                        return f"Permission Denied: Path traversal detected: {str(pte)}"
-                    except Exception:
-                        rel_norm = str(target_path).replace("\\", "/").strip("/")
+            allowed_cmds = getattr(permissions, "allowed_commands", None)
+            if isinstance(permissions, dict):
+                allowed_cmds = permissions.get("allowed_commands")
 
-                    matched = False
-                    for p in allowed_writes:
-                        norm_p = str(p).replace("\\", "/").strip("/")
-                        if norm_p == "*":
-                            matched = True
-                            break
-                        clean_pattern = norm_p.rstrip("*").rstrip("/")
-                        if (
-                            rel_norm == clean_pattern
-                            or rel_norm.startswith(clean_pattern + "/")
-                            or fnmatch.fnmatch(rel_norm, norm_p)
-                        ):
-                            matched = True
-                            break
-                    if not matched:
-                        return f"Permission Denied: Write operation on '{target_path}' is outside allowed paths {allowed_writes}."
+            if allowed_cmds and "*" not in allowed_cmds:
+                if tool_name in ("terminal_execute", "run_command", "bash"):
+                    cmd = args.get("command") or ""
+                    if cmd:
+                        matched_cmd = any(cmd.strip().startswith(c) for c in allowed_cmds)
+                        if not matched_cmd:
+                            return f"Permission Denied: Command '{cmd}' is outside allowed command prefixes {allowed_cmds}."
 
-        allowed_cmds = getattr(permissions, "allowed_commands", None)
-        if isinstance(permissions, dict):
-            allowed_cmds = permissions.get("allowed_commands")
+            # Check task-level network permissions (defense-in-depth)
+            task_net_allowed = getattr(permissions, "network_allowed", None)
+            if task_net_allowed is None and isinstance(permissions, dict):
+                task_net_allowed = permissions.get("network_allowed")
 
-        if allowed_cmds and "*" not in allowed_cmds:
-            if tool_name in ("terminal_execute", "run_command", "bash"):
-                cmd = args.get("command") or ""
-                if cmd:
-                    matched_cmd = any(cmd.strip().startswith(c) for c in allowed_cmds)
-                    if not matched_cmd:
-                        return f"Permission Denied: Command '{cmd}' is outside allowed command prefixes {allowed_cmds}."
+            task_allowed_doms = getattr(permissions, "allowed_domains", None) or (permissions.get("allowed_domains") if isinstance(permissions, dict) else None)
+            task_blocked_doms = getattr(permissions, "blocked_domains", None) or (permissions.get("blocked_domains") if isinstance(permissions, dict) else None)
 
-        # Check task-level network permissions (defense-in-depth)
-        task_net_allowed = getattr(permissions, "network_allowed", None)
-        if task_net_allowed is None and isinstance(permissions, dict):
-            task_net_allowed = permissions.get("network_allowed")
-
-        task_allowed_doms = getattr(permissions, "allowed_domains", None) or (permissions.get("allowed_domains") if isinstance(permissions, dict) else None)
-        task_blocked_doms = getattr(permissions, "blocked_domains", None) or (permissions.get("blocked_domains") if isinstance(permissions, dict) else None)
-
-        if task_net_allowed is False:
-            if tool_name in (
-                "http_request", "http_fetch", "fetch_url", "read_url", "read_url_content",
-                "web_search", "search_web", "download_file", "download_package"
-            ):
-                return f"Permission Denied: Network access is disabled for this task (network_allowed=False). Tool '{tool_name}' cannot be invoked."
-            if tool_name in ("terminal_execute", "run_command", "bash"):
-                cmd = args.get("command") or ""
-                if cmd:
-                    from ..security.network_policy import NetworkAccessPolicy, NetworkAccessMode
-                    net_pol = NetworkAccessPolicy(mode=NetworkAccessMode.DISABLED)
-                    dec = net_pol.evaluate_command(cmd)
-                    if not dec.allowed:
-                        return f"Permission Denied: Command '{cmd}' blocked by network policy: {dec.reason}"
-        elif task_net_allowed is True and (task_allowed_doms or task_blocked_doms):
-            from ..security.network_policy import NetworkAccessPolicy, NetworkAccessMode
-            net_pol = NetworkAccessPolicy(
-                mode=NetworkAccessMode.ALLOWLIST_ONLY if task_allowed_doms else NetworkAccessMode.UNRESTRICTED,
-                allowed_domains=task_allowed_doms or NetworkAccessPolicy().allowed_domains,
-                blocked_domains=list(NetworkAccessPolicy().blocked_domains) + list(task_blocked_doms or []),
-            )
-            if tool_name in (
-                "http_request", "http_fetch", "fetch_url", "read_url", "read_url_content",
-                "web_search", "search_web", "download_file", "download_package"
-            ):
-                target_u = args.get("url") or args.get("uri") or args.get("endpoint") or args.get("host") or ""
-                if target_u:
-                    target_str = str(target_u).strip()
-                    dec = net_pol.evaluate_url(target_str) if ("://" in target_str or "/" in target_str) else net_pol.evaluate_host(target_str)
-                    if not dec.allowed:
-                        return f"Permission Denied: Network operation on '{target_u}' blocked by network policy: {dec.reason}"
-            elif tool_name in ("terminal_execute", "run_command", "bash"):
-                cmd = args.get("command") or ""
-                if cmd:
-                    dec = net_pol.evaluate_command(cmd)
-                    if not dec.allowed:
-                        return f"Permission Denied: Command '{cmd}' blocked by network policy: {dec.reason}"
+            if task_net_allowed is False:
+                if tool_name in (
+                    "http_request", "http_fetch", "fetch_url", "read_url", "read_url_content",
+                    "web_search", "search_web", "download_file", "download_package"
+                ):
+                    return f"Permission Denied: Network access is disabled for this task (network_allowed=False). Tool '{tool_name}' cannot be invoked."
+                if tool_name in ("terminal_execute", "run_command", "bash"):
+                    cmd = args.get("command") or ""
+                    if cmd:
+                        from ..security.network_policy import NetworkAccessPolicy, NetworkAccessMode
+                        net_pol = NetworkAccessPolicy(mode=NetworkAccessMode.DISABLED)
+                        dec = net_pol.evaluate_command(cmd)
+                        if not dec.allowed:
+                            return f"Permission Denied: Command '{cmd}' blocked by network policy: {dec.reason}"
+            elif task_net_allowed is True and (task_allowed_doms or task_blocked_doms):
+                from ..security.network_policy import NetworkAccessPolicy, NetworkAccessMode
+                net_pol = NetworkAccessPolicy(
+                    mode=NetworkAccessMode.ALLOWLIST_ONLY if task_allowed_doms else NetworkAccessMode.UNRESTRICTED,
+                    allowed_domains=task_allowed_doms or NetworkAccessPolicy().allowed_domains,
+                    blocked_domains=list(NetworkAccessPolicy().blocked_domains) + list(task_blocked_doms or []),
+                )
+                if tool_name in (
+                    "http_request", "http_fetch", "fetch_url", "read_url", "read_url_content",
+                    "web_search", "search_web", "download_file", "download_package"
+                ):
+                    target_u = args.get("url") or args.get("uri") or args.get("endpoint") or args.get("host") or ""
+                    if target_u:
+                        target_str = str(target_u).strip()
+                        dec = net_pol.evaluate_url(target_str) if ("://" in target_str or "/" in target_str) else net_pol.evaluate_host(target_str)
+                        if not dec.allowed:
+                            return f"Permission Denied: Network operation on '{target_u}' blocked by network policy: {dec.reason}"
+                elif tool_name in ("terminal_execute", "run_command", "bash"):
+                    cmd = args.get("command") or ""
+                    if cmd:
+                        dec = net_pol.evaluate_command(cmd)
+                        if not dec.allowed:
+                            return f"Permission Denied: Command '{cmd}' blocked by network policy: {dec.reason}"
+        except Exception as e:
+            return f"Permission Denied: Permission verification error ({type(e).__name__}: {str(e)})"
 
         return None
 

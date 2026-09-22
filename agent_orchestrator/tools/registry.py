@@ -446,21 +446,20 @@ class ToolRegistry:
             )
 
         # 1. Authorization
-        if caller_role:
-            auth_res = self.authorize(
-                name=entry.name,
-                args=args,
-                agent_role=caller_role,
-                task_permissions=task_permissions,
-                workspace=workspace,
+        auth_res = self.authorize(
+            name=entry.name,
+            args=args,
+            agent_role=caller_role,
+            task_permissions=task_permissions,
+            workspace=workspace,
+        )
+        if not auth_res.allowed:
+            return ToolExecutionResult(
+                success=False,
+                error=auth_res.reason,
+                metadata={"suggested_action": auth_res.suggested_action},
+                duration_ms=round((time.time() - t_start) * 1000, 2),
             )
-            if not auth_res.allowed:
-                return ToolExecutionResult(
-                    success=False,
-                    error=auth_res.reason,
-                    metadata={"suggested_action": auth_res.suggested_action},
-                    duration_ms=round((time.time() - t_start) * 1000, 2),
-                )
 
         # 2. Argument normalization
         call_args = dict(args) if isinstance(args, dict) else {}

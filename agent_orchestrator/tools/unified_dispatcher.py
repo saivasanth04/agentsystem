@@ -128,16 +128,49 @@ class UnifiedToolDispatcher:
                     tools.extend(mcp_tools)
         return tools
 
-    def call_tool(self, name: str, arguments: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def call_tool(
+        self,
+        name: str,
+        arguments: Optional[Dict[str, Any]] = None,
+        agent_role: Optional[Any] = None,
+        agent_name: Optional[str] = None,
+        caller_role: Optional[Any] = None,
+        task_permissions: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
         """
         Dispatch tool call across either Builtin Registry or MCP Server Manager.
         Reacts adaptively to server health:
+        - Evaluates central authorization first under agent/caller role and task permissions.
         - If MCP server is HEALTHY: routes directly to MCP server.
         - If MCP server is UNHEALTHY: fails-fast and routes to native fallback provider (e.g. CBM or Filesystem) without blocking.
-        - If tool is native (e.g. graft_subtask / spawn_subtasks): routes to Builtin Registry.
+        - If tool is native (e.g. graft_subtask / spawn_subtasks): routes to Builtin Registry, propagating permission context.
         """
         clean_name = (name or "").strip()
         arguments = arguments if isinstance(arguments, dict) else {}
+        eff_role = agent_role or agent_name or caller_role or kwargs.get("agent_role") or kwargs.get("agent_name") or kwargs.get("caller_role")
+        eff_task_permissions = task_permissions or kwargs.get("task_permissions") or kwargs.get("permissions")
+
+        # 0. Central Authorization Check
+        auth_res = self.authorize(
+            clean_name,
+            arguments,
+            agent_role=eff_role,
+            task_permissions=eff_task_permissions,
+        )
+        if not getattr(auth_res, "allowed", True):
+            reason = getattr(auth_res, "reason", "Permission Denied")
+            suggested = getattr(auth_res, "suggested_action", None)
+            logger.warning(
+                f"Permission Denied by UnifiedToolDispatcher for tool '{clean_name}' (role: {eff_role}): {reason}"
+            )
+            return {
+                "output": reason,
+                "error": reason,
+                "success": False,
+                "is_error": True,
+                "suggested_action": suggested,
+            }
 
         # Priority 1: Check if tool belongs to an MCP Server
         if self.mcp_manager:
@@ -157,7 +190,13 @@ class UnifiedToolDispatcher:
 
                 # If MCP server is UNHEALTHY or circuit is OPEN, execute adaptive fallback
                 if server_health == "UNHEALTHY" or (cb and not cb.can_attempt()):
-                    fallback_res = self._handle_unhealthy_mcp_fallback(clean_name, arguments, resolved_server)
+                    fallback_res = self._handle_unhealthy_mcp_fallback(
+                        clean_name,
+                        arguments,
+                        resolved_server,
+                        caller_role=eff_role,
+                        task_permissions=eff_task_permissions,
+                    )
                     if fallback_res is not None:
                         return fallback_res
 
@@ -173,7 +212,13 @@ class UnifiedToolDispatcher:
                         if mcp_res.isError:
                             mcp_span.set_status(SpanStatus.ERROR, "MCP tool error")
                             # If the call failed with circuit open or connection drop, attempt fallback
-                            fallback_res = self._handle_unhealthy_mcp_fallback(clean_name, arguments, resolved_server)
+                            fallback_res = self._handle_unhealthy_mcp_fallback(
+                                clean_name,
+                                arguments,
+                                resolved_server,
+                                caller_role=eff_role,
+                                task_permissions=eff_task_permissions,
+                            )
                             if fallback_res is not None:
                                 return fallback_res
                         else:
@@ -195,7 +240,12 @@ class UnifiedToolDispatcher:
                         }
 
         # Priority 2: Builtin Local Tools (e.g. graft_subtask / spawn_subtasks, filesystem)
-        builtin_res = self.builtin_registry.call_tool(clean_name, arguments)
+        builtin_res = self.builtin_registry.call_tool(
+            clean_name,
+            arguments,
+            caller_role=eff_role,
+            task_permissions=eff_task_permissions,
+        )
         if isinstance(builtin_res, dict) and "error" in builtin_res and "not found" in str(builtin_res.get("error")):
             # Fallback to MCP tool search if builtin not found
             if self.mcp_manager:
@@ -222,24 +272,55 @@ class UnifiedToolDispatcher:
                         }
         return builtin_res
 
-    def execute_tool(self, name: str, arguments: Dict[str, Any], agent_name: Optional[str] = None) -> Dict[str, Any]:
+    def execute_tool(
+        self,
+        name: str,
+        arguments: Dict[str, Any],
+        agent_name: Optional[str] = None,
+        agent_role: Optional[Any] = None,
+        task_permissions: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
         """Alias for call_tool."""
-        return self.call_tool(name, arguments)
+        return self.call_tool(
+            name,
+            arguments,
+            agent_name=agent_name,
+            agent_role=agent_role,
+            task_permissions=task_permissions,
+            **kwargs,
+        )
 
     async def execute_tool_async(
         self,
         tool_name: str,
         arguments: Dict[str, Any],
         agent_name: Optional[str] = None,
+        agent_role: Optional[Any] = None,
+        task_permissions: Optional[Any] = None,
+        **kwargs: Any,
     ) -> Dict[str, Any]:
         """
         Asynchronously executes a tool call, delegating to worker thread if blocking.
         """
         import asyncio
-        return await asyncio.to_thread(self.call_tool, tool_name, arguments)
+        return await asyncio.to_thread(
+            self.call_tool,
+            tool_name,
+            arguments,
+            agent_name=agent_name,
+            agent_role=agent_role,
+            task_permissions=task_permissions,
+            **kwargs,
+        )
 
     def _handle_unhealthy_mcp_fallback(
-        self, tool_name: str, arguments: Dict[str, Any], server_name: Optional[str]
+        self,
+        tool_name: str,
+        arguments: Dict[str, Any],
+        server_name: Optional[str],
+        caller_role: Optional[Any] = None,
+        task_permissions: Optional[Any] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Adaptive fallback router when an MCP server is UNHEALTHY or its circuit breaker is OPEN.
@@ -256,7 +337,12 @@ class UnifiedToolDispatcher:
 
         # 2. Fallback for Filesystem MCP tools
         if bare_tool in ("read_file", "write_file", "list_directory", "get_file_info", "delete_file"):
-            builtin_res = self.builtin_registry.call_tool(bare_tool, arguments)
+            builtin_res = self.builtin_registry.call_tool(
+                bare_tool,
+                arguments,
+                caller_role=caller_role,
+                task_permissions=task_permissions,
+            )
             if isinstance(builtin_res, dict):
                 builtin_res["fallback"] = True
                 builtin_res["fallback_provider"] = "native_filesystem"
@@ -491,12 +577,20 @@ class UnifiedToolDispatcher:
         name: str,
         args: Dict[str, Any],
         caller_role: Optional[Any] = None,
+        task_permissions: Optional[Any] = None,
         context: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
     ) -> Any:
         """Executes a tool across unified dispatcher with standardized result envelope."""
         from .registry import ToolExecutionResult
 
-        res = self.call_tool(name, args)
+        res = self.call_tool(
+            name,
+            args,
+            caller_role=caller_role,
+            task_permissions=task_permissions,
+            **kwargs,
+        )
         if isinstance(res, dict):
             is_success = res.get("success", True) and ("error" not in res)
             return ToolExecutionResult(
@@ -509,6 +603,7 @@ class UnifiedToolDispatcher:
                     "server": res.get("server"),
                     "fallback": res.get("fallback", False),
                     "fallback_provider": res.get("fallback_provider"),
+                    "suggested_action": res.get("suggested_action"),
                 },
             )
         return ToolExecutionResult(success=True, output=res, data=res)

@@ -1211,10 +1211,24 @@ class BuiltinToolRegistry:
         self.get(name)
         return self.registry.authorize(name, args, agent_role=agent_role, task_permissions=task_permissions, workspace=self.workspace)
 
-    def execute(self, name: str, args: Dict[str, Any], caller_role: Optional[Any] = None, context: Optional[Dict[str, Any]] = None) -> Any:
+    def execute(
+        self,
+        name: str,
+        args: Dict[str, Any],
+        caller_role: Optional[Any] = None,
+        context: Optional[Dict[str, Any]] = None,
+        task_permissions: Optional[Any] = None,
+    ) -> Any:
         """Executes a tool through the standardized pipeline."""
         self.get(name)
-        return self.registry.execute(name, args, caller_role=caller_role, workspace=self.workspace, context=context)
+        return self.registry.execute(
+            name,
+            args,
+            caller_role=caller_role,
+            task_permissions=task_permissions,
+            workspace=self.workspace,
+            context=context,
+        )
 
     def health_check(self, name: Optional[str] = None) -> Dict[str, Any]:
         """Runs active liveness and health diagnostics on registered tools."""
@@ -1559,9 +1573,19 @@ class BuiltinToolRegistry:
             })
         return schemas
 
-    def call_tool(self, name: str, arguments: Optional[Dict[str, Any]] = None, caller_role: Optional[str] = None) -> Any:
+    def call_tool(
+        self,
+        name: str,
+        arguments: Optional[Dict[str, Any]] = None,
+        caller_role: Optional[str] = None,
+        agent_name: Optional[str] = None,
+        task_permissions: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> Any:
         arguments = arguments if isinstance(arguments, dict) else {}
-        exec_res = self.execute(name, arguments, caller_role=caller_role)
+        eff_role = caller_role or agent_name or kwargs.get("agent_role")
+        eff_perms = task_permissions or kwargs.get("permissions") or kwargs.get("task_permissions")
+        exec_res = self.execute(name, arguments, caller_role=eff_role, task_permissions=eff_perms)
         if exec_res.success:
             if isinstance(exec_res.data, dict):
                 res = dict(exec_res.data)
@@ -1571,7 +1595,7 @@ class BuiltinToolRegistry:
                 res["_provenance"] = exec_res.provenance
             return res
         else:
-            res = {"error": exec_res.error, "success": False}
+            res = {"error": exec_res.error, "success": False, "output": exec_res.error}
             if exec_res.metadata and "suggested_action" in exec_res.metadata:
                 res["suggested_action"] = exec_res.metadata["suggested_action"]
             if exec_res.provenance:

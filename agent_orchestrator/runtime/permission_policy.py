@@ -249,6 +249,18 @@ DEFAULT_ROLE_POLICIES: Dict[str, PermissionPolicy] = {
         allowed_command_prefixes=[],
         vcs_commit_requires_approval=False,
     ),
+    "UNKNOWN": PermissionPolicy(
+        allowed_operations={ToolOperationType.READ},
+        allowed_write_patterns=[],
+        allowed_command_prefixes=[],
+        vcs_commit_requires_approval=True,
+    ),
+    "ANONYMOUS": PermissionPolicy(
+        allowed_operations={ToolOperationType.READ},
+        allowed_write_patterns=[],
+        allowed_command_prefixes=[],
+        vcs_commit_requires_approval=True,
+    ),
 }
 
 
@@ -270,8 +282,15 @@ class ToolPermissionPolicyEngine:
     @classmethod
     def get_tool_operation_type(cls, tool_name: str) -> ToolOperationType:
         """Determines the operation classification of a tool."""
-        clean = tool_name.lower().strip()
-        return TOOL_OPERATION_MAP.get(clean, ToolOperationType.READ)
+        clean = (tool_name or "").lower().strip()
+        if clean in TOOL_OPERATION_MAP:
+            return TOOL_OPERATION_MAP[clean]
+        bare = clean.split("__")[-1]
+        if bare.startswith("mcp_"):
+            bare = bare[4:]
+        if bare in TOOL_OPERATION_MAP:
+            return TOOL_OPERATION_MAP[bare]
+        return ToolOperationType.READ
 
     @classmethod
     def get_policy_for_role(
@@ -284,16 +303,12 @@ class ToolPermissionPolicyEngine:
             return agent_role
 
         if not agent_role:
-            # Default permissive policy for unassigned roles
+            # Default read-only policy for unassigned/anonymous roles
             return PermissionPolicy(
-                allowed_operations={
-                    ToolOperationType.READ,
-                    ToolOperationType.WRITE,
-                    ToolOperationType.EXECUTE,
-                    ToolOperationType.CONTROL,
-                },
-                allowed_write_patterns=["*"],
-                allowed_command_prefixes=["*"],
+                allowed_operations={ToolOperationType.READ},
+                allowed_write_patterns=[],
+                allowed_command_prefixes=[],
+                vcs_commit_requires_approval=True,
             )
 
         role_clean = str(agent_role).upper().strip()
@@ -317,15 +332,12 @@ class ToolPermissionPolicyEngine:
         except Exception:
             pass
 
+        # Default read-only policy for unknown roles
         return PermissionPolicy(
-            allowed_operations={
-                ToolOperationType.READ,
-                ToolOperationType.WRITE,
-                ToolOperationType.EXECUTE,
-                ToolOperationType.CONTROL,
-            },
-            allowed_write_patterns=["*"],
-            allowed_command_prefixes=["*"],
+            allowed_operations={ToolOperationType.READ},
+            allowed_write_patterns=[],
+            allowed_command_prefixes=[],
+            vcs_commit_requires_approval=True,
         )
 
     @classmethod
