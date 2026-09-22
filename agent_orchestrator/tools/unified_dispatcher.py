@@ -75,26 +75,27 @@ class UnifiedToolDispatcher:
                 seen_names.add(fn_name)
                 schemas.append(s)
 
-        # 2. Add MCP Tools schemas with health filtering
+        # 2. Add MCP Tools schemas with health filtering (Unknown callers receive no MCP schemas)
         agent_clean = (agent_name or "").upper().strip()
-        allowed_servers = self._agent_mcp_permissions.get(agent_clean)
+        allowed_servers = self._agent_mcp_permissions.get(agent_clean, [])
 
-        for server_info in self.mcp_manager.discover_servers():
-            s_name = server_info["server_name"]
-            if allowed_servers is not None and s_name not in allowed_servers:
-                continue
+        if allowed_servers and self.mcp_manager:
+            for server_info in self.mcp_manager.discover_servers():
+                s_name = server_info["server_name"]
+                if s_name not in allowed_servers:
+                    continue
 
-            health_status = self.mcp_manager.get_server_health_status(s_name)
-            if health_status == "UNHEALTHY":
-                logger.warning(
-                    f"MCP Server '{s_name}' is UNHEALTHY (circuit open/error). Suppressing its tools from LLM schemas."
-                )
-                continue
+                health_status = self.mcp_manager.get_server_health_status(s_name)
+                if health_status == "UNHEALTHY":
+                    logger.warning(
+                        f"MCP Server '{s_name}' is UNHEALTHY (circuit open/error). Suppressing its tools from LLM schemas."
+                    )
+                    continue
 
-            for tool in self.mcp_manager.discover_tools(server_name=s_name):
-                if tool.name not in seen_names:
-                    seen_names.add(tool.name)
-                    schemas.append(tool.to_function_schema())
+                for tool in self.mcp_manager.discover_tools(server_name=s_name):
+                    if tool.name not in seen_names:
+                        seen_names.add(tool.name)
+                        schemas.append(tool.to_function_schema())
 
         return schemas
 

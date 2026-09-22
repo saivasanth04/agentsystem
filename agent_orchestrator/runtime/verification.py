@@ -137,8 +137,8 @@ class TaskVerificationGate:
                     for v in contract_report.violations:
                         if v not in failure_reasons:
                             failure_reasons.append(v)
-            except Exception:
-                pass
+            except Exception as e:
+                failure_reasons.append(f"Contract Verification Failed (Exception): {str(e)}")
 
         # 1. Verify Expected Outputs
         for out in task_outputs:
@@ -223,8 +223,8 @@ class TaskVerificationGate:
                     s_valid, s_errs, _ = ArtifactValidator.validate_syntax(v_out, content)
                     for se in s_errs:
                         failure_reasons.append(f"Artifact Syntax Error in '{v_out}': {se}")
-        except Exception:
-            pass
+        except Exception as e:
+            failure_reasons.append(f"Artifact Verification Failed (Exception): {str(e)}")
 
         # 2. Multi-Tier Deterministic Static Verification
         static_report_dict = None
@@ -243,7 +243,7 @@ class TaskVerificationGate:
                 if not report.passed:
                     failure_reasons.extend(report.all_failures)
             except Exception as e:
-                pass
+                failure_reasons.append(f"Static Verification Failed (Exception): {str(e)}")
 
         # 3. Staged Build Verification Pipeline
         pipeline_report_dict = None
@@ -310,8 +310,8 @@ class TaskVerificationGate:
                             f"Build verification pipeline failed at stage '{pipe_report.failed_stage.value}' "
                             f"(Command: `{failed_res.command if failed_res else 'N/A'}`). Error: {err_msg[:300]}"
                         )
-        except Exception:
-            pass
+        except Exception as e:
+            failure_reasons.append(f"Build Verification Failed (Exception): {str(e)}")
 
         # 4. Fallback Acceptance Tests (if pipeline was not invoked)
         if not pipeline_report_dict and task_acceptance_tests:
@@ -355,8 +355,8 @@ class TaskVerificationGate:
                         failure_reasons.append(f"Cross-Module Regression in dependent: {bd}")
                     for ft in reg_report.failing_tests:
                         failure_reasons.append(f"Regression Test Failure: {ft}")
-            except Exception:
-                pass
+            except Exception as e:
+                failure_reasons.append(f"Regression Verification Failed (Exception): {str(e)}")
 
         # 5. Deterministic Ground-Truth Verification Matrix
         ground_truth_report_dict = None
@@ -384,8 +384,8 @@ class TaskVerificationGate:
             if not gt_report.passed:
                 for bf in gt_report.blocking_failures:
                     failure_reasons.append(f"Ground-truth gate failure: {bf}")
-        except Exception:
-            pass
+        except Exception as e:
+            failure_reasons.append(f"Ground-Truth Verification Failed (Exception): {str(e)}")
 
         passed = len(failure_reasons) == 0
         if passed:
