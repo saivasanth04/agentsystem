@@ -40,14 +40,23 @@ class BudgetTracker:
     """
 
     def __init__(self, spec: Optional[BudgetSpec] = None):
-        self.spec = spec or BudgetSpec()
         self._lock = threading.Lock()
-        self.reset()
+        self.spec = spec or BudgetSpec()
+        self.reset(reset_spec=False)
 
-    def reset(self):
-        """Resets all tracked expenditures and restores default unconstrained budget."""
+    def reset(self, reset_spec: bool = False, new_spec: Optional[BudgetSpec] = None):
+        """
+        Resets all tracked expenditures.
+        Preserves the active budget policy unless explicitly requested to reset or replace it.
+        """
         with self._lock:
-            self.spec = BudgetSpec()
+            if new_spec is not None:
+                self.spec = new_spec
+            elif reset_spec:
+                self.spec = BudgetSpec()
+            elif not hasattr(self, "spec") or self.spec is None:
+                self.spec = BudgetSpec()
+
             self.session_prompt_tokens: int = 0
             self.session_completion_tokens: int = 0
             self.session_total_tokens: int = 0
