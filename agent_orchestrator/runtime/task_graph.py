@@ -674,12 +674,14 @@ class TaskDAG:
                     deps_satisfied = True
                     has_failed_dep = False
                     has_skipped_dep = False
+                    missing_deps = []
 
                     for dep_id in task.dependencies:
                         dep_task = self._tasks.get(dep_id)
                         if not dep_task:
+                            missing_deps.append(dep_id)
                             deps_satisfied = False
-                            break
+                            continue
                         if dep_task.state == TaskState.FAILED:
                             has_failed_dep = True
                             deps_satisfied = False
@@ -691,11 +693,16 @@ class TaskDAG:
                         elif dep_task.state != TaskState.COMPLETED:
                             deps_satisfied = False
 
-                    if deps_satisfied:
+                    if missing_deps:
+                        task.state = TaskState.BLOCKED
+                        task.error_message = f"Blocked: Nonexistent prerequisite dependency {missing_deps} in task DAG."
+                        task.completed_at = datetime.now().isoformat()
+                    elif deps_satisfied:
                         task.state = TaskState.READY
                         ready.append(task)
                     elif has_failed_dep:
                         task.state = TaskState.BLOCKED
+                        task.error_message = f"Blocked: Upstream dependency failed."
                     elif has_skipped_dep:
                         task.state = TaskState.SKIPPED_REDUNDANT
                         task.error_message = f"Pruned because upstream dependency was skipped or pruned."

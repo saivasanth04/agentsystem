@@ -111,7 +111,7 @@ class TaskVerificationGate:
 
         task_outputs = task.get("outputs", []) if isinstance(task, dict) else getattr(task, "outputs", [])
         task_acceptance_tests = task.get("acceptance_tests", []) if isinstance(task, dict) else getattr(task, "acceptance_tests", [])
-        raw_caps = task.get("capabilities", []) if isinstance(task, dict) else getattr(task, "required_capabilities", [])
+        raw_caps = (task.get("required_capabilities") or task.get("capabilities", [])) if isinstance(task, dict) else (getattr(task, "required_capabilities", None) or getattr(task, "capabilities", []))
         task_capabilities = [str(c).lower() for c in raw_caps]
 
         # 0. Check Deliverable Schema Validation
@@ -183,14 +183,18 @@ class TaskVerificationGate:
                 verified_outputs.append(str(file_part))
 
         # 1b. Reconcile Task Deliverables & Validate Artifact Content/Syntax
-        try:
-            from .artifact_validator import ArtifactValidator
-            written_files = []
-            if isinstance(result_data, dict):
-                written_files = result_data.get("written_files", [])
-            if not written_files and hasattr(target_ws, "get_uncommitted_changes"):
+        written_files = []
+        if isinstance(result_data, dict):
+            written_files = result_data.get("written_files", [])
+        if not written_files and hasattr(target_ws, "get_uncommitted_changes"):
+            try:
                 uncommitted = target_ws.get_uncommitted_changes()
                 written_files = uncommitted.get("created", []) + uncommitted.get("modified", [])
+            except Exception:
+                pass
+
+        try:
+            from .artifact_validator import ArtifactValidator
 
             forbidden_paths = None
             task_perms = getattr(task, "permissions", None) or (task.get("permissions") if isinstance(task, dict) else None)
@@ -386,6 +390,33 @@ class TaskVerificationGate:
                     failure_reasons.append(f"Ground-truth gate failure: {bf}")
         except Exception as e:
             failure_reasons.append(f"Ground-Truth Verification Failed (Exception): {str(e)}")
+
+        # 6. Check for Vacuous Task Success on Mutating Coding and Testing Tasks
+        is_test_task = any(cap in ("testing", "unit-tests", "verification", "integration-tests") for cap in task_capabilities)
+        is_coding_task = any(cap in ("code-generation", "refactoring", "frontend", "backend", "coding", "implementation", "bugfix") for cap in task_capabilities)
+
+        task_artifacts = getattr(task, "artifacts", None) or (task.get("artifacts") if isinstance(task, dict) else []) or []
+        task_typed_artifacts = getattr(task, "typed_artifacts", None) or (task.get("typed_artifacts") if isinstance(task, dict) else []) or []
+
+        if is_coding_task and not verified_outputs and not written_files and not task_artifacts and not task_typed_artifacts:
+            failure_reasons.append(
+                f"Vacuous task success: Mutating coding task '{task_id}' produced no concrete deliverables (no verified outputs, modified files, or artifacts)."
+            )
+
+        has_pipeline_test_execution = False
+        if pipeline_report_dict and "stage_results" in pipeline_report_dict:
+            for s_name, s_data in pipeline_report_dict["stage_results"].items():
+                if s_name in ("UNIT_TEST", "INTEGRATION_TEST") and not s_data.get("skipped", False):
+                    has_pipeline_test_execution = True
+
+        if is_test_task and not has_pipeline_test_execution and not task_acceptance_tests:
+            test_evidence = False
+            if isinstance(result_data, dict) and (result_data.get("test_results") or result_data.get("passed") is not None or result_data.get("exit_code") is not None or result_data.get("tests_executed")):
+                test_evidence = True
+            if not test_evidence:
+                failure_reasons.append(
+                    f"Vacuous task success: Testing task '{task_id}' executed with no concrete acceptance evidence (no test pipeline or acceptance tests executed)."
+                )
 
         passed = len(failure_reasons) == 0
         if passed:

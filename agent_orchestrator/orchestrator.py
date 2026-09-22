@@ -770,9 +770,8 @@ Respond ONLY with the JSON array of tasks.
         # Build and validate TaskDAG
         task_dag = TaskDAG.from_list(raw_tasks)
         if task_dag.detect_cycles():
-            self.on_event("DAG WARNING", "Cycle detected in synthesized plan! Clearing circular dependencies.")
-            for t in task_dag.list_tasks():
-                t.dependencies = []
+            self.on_event("DAG ERROR", "Cycle detected in synthesized plan! Cyclic plans cannot execute safely.")
+            raise ValueError("Cyclic dependency detected in synthesized task DAG. Plan execution aborted.")
 
         # Gate 2: Semantic Plan Validation against Architecture & Specification
         spec_data = state.get("specification_output")
