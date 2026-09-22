@@ -70,6 +70,31 @@ class BudgetTracker:
         with self._lock:
             self.spec = spec
 
+    def set_budget(
+        self,
+        max_cost_usd: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        max_task_cost_usd: Optional[float] = None,
+        max_task_tokens: Optional[int] = None,
+    ):
+        """Convenience method to configure session and task budget limits."""
+        with self._lock:
+            if not hasattr(self, "spec") or self.spec is None:
+                self.spec = BudgetSpec()
+            if max_cost_usd is not None:
+                self.spec.max_session_cost_usd = float(max_cost_usd)
+            if max_tokens is not None:
+                self.spec.max_session_tokens = int(max_tokens)
+            if max_task_cost_usd is not None:
+                self.spec.max_cost_usd_per_task = float(max_task_cost_usd)
+            if max_task_tokens is not None:
+                self.spec.max_tokens_per_task = int(max_task_tokens)
+
+    def is_budget_exceeded(self, task_id: Optional[str] = None, agent_name: Optional[str] = None) -> bool:
+        """Returns True if any budget limit is currently breached."""
+        exceeded, _ = self.check_budget(task_id=task_id, agent_name=agent_name)
+        return exceeded
+
     def record_spend(
         self,
         task_id: Optional[str] = None,

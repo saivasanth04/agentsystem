@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import threading
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 try:
     from ..config import config

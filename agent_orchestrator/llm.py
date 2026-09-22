@@ -54,6 +54,7 @@ class ConcurrencyThrottler:
 class LLMClient:
     def __init__(
         self,
+        config: Optional[Any] = None,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         default_model: Optional[str] = None,
@@ -61,26 +62,31 @@ class LLMClient:
         retry_policy: Optional[Any] = None,
         provider_pool: Optional[Any] = None,
         default_seed: Optional[int] = None,
+        **kwargs: Any,
     ):
-        self.api_key = api_key or config.api_key
+        active_config = config or kwargs.get("cfg") or globals().get("config")
+        self.config = active_config
+        self.api_key = api_key or (active_config.api_key if active_config else "")
         from .security.secrets import secret_manager
-        secret_manager.register_secret(self.api_key)
-        self.base_url = base_url or config.base_url
-        self.default_model = default_model or config.default_model
+        if self.api_key:
+            secret_manager.register_secret(self.api_key)
+        self.base_url = base_url or (active_config.base_url if active_config else "http://127.0.0.1:8000/v1")
+        self.default_model = default_model or (active_config.default_model if active_config else "auto")
         import httpx
         self.default_seed = default_seed
+        timeout_sec = getattr(active_config, "timeout_seconds", 90.0) if active_config else 90.0
         self.client = OpenAI(
             api_key=self.api_key,
             base_url=self.base_url,
-            timeout=httpx.Timeout(connect=2.5, read=config.timeout_seconds, write=10.0, pool=5.0)
+            timeout=httpx.Timeout(connect=2.5, read=timeout_sec, write=10.0, pool=5.0)
         )
         self.throttler = ConcurrencyThrottler(max_concurrency=max_concurrency)
 
         from .resilience import LLMRetryPolicy, ProviderFailoverPool, ResilientLLMCaller
         self.retry_policy = retry_policy or LLMRetryPolicy(
-            max_retries=getattr(config, "llm_max_retries", 3),
-            base_delay=getattr(config, "llm_base_delay", 0.5),
-            max_delay=getattr(config, "llm_max_delay", 30.0),
+            max_retries=getattr(active_config, "llm_max_retries", 3) if active_config else 3,
+            base_delay=getattr(active_config, "llm_base_delay", 0.5) if active_config else 0.5,
+            max_delay=getattr(active_config, "llm_max_delay", 30.0) if active_config else 30.0,
         )
         if provider_pool:
             self.provider_pool = provider_pool
@@ -90,11 +96,13 @@ class LLMClient:
                 primary_api_key=self.api_key,
                 primary_name="primary",
             )
-            if getattr(config, "fallback_base_url", "") and getattr(config, "fallback_api_key", ""):
+            fallback_url = getattr(active_config, "fallback_base_url", "") if active_config else ""
+            fallback_k = getattr(active_config, "fallback_api_key", "") if active_config else ""
+            if fallback_url and fallback_k:
                 self.provider_pool.add_fallback_endpoint(
                     name="secondary",
-                    base_url=config.fallback_base_url,
-                    api_key=config.fallback_api_key,
+                    base_url=fallback_url,
+                    api_key=fallback_k,
                 )
             
             # Auto-register direct provider fallback endpoints from apikeys.txt for failover resilience
@@ -123,7 +131,7 @@ class LLMClient:
             throttler=self.throttler,
             retry_policy=self.retry_policy,
             provider_pool=self.provider_pool,
-            timeout=config.timeout_seconds,
+            timeout=timeout_sec,
         )
         self.last_system_fingerprint: Optional[str] = None
 

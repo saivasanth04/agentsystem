@@ -92,9 +92,9 @@ class TaskOrchestrator:
         approval_gate: Optional[Any] = None,
         **kwargs: Any,
     ):
-        self.cfg = cfg or config
-        self.llm = llm or default_llm
-        self.workspace = workspace or WorkspaceManager(self.cfg.workspace_dir)
+        self.cfg = cfg or kwargs.get("config") or config
+        self.llm = llm or kwargs.get("llm_client") or default_llm
+        self.workspace = workspace or kwargs.get("ws") or WorkspaceManager(self.cfg.workspace_dir)
 
         # Structured Logging (Issue #53)
         from .logging import (

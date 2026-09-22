@@ -65,9 +65,13 @@ class ReplanRecord:
 
 @dataclass
 class OrchestratorState:
-    # 1. Initial input
+    # 1. Initial input & Session Identity
     user_request: str
     status: TaskStatus = TaskStatus.PENDING
+    session_id: Optional[str] = None
+    workspace_dir: Optional[str] = None
+    git_branch: Optional[str] = "main"
+    git_commit: Optional[str] = ""
 
     # 2. Stage 0, 1 & 2: Discover, Understand & Decompose (DAG & Legacy list)
     project_profile: Optional[Dict[str, Any]] = None
@@ -219,3 +223,38 @@ class OrchestratorState:
             else:
                 roots.append(t_dict)
         return roots
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serializes orchestrator state into JSON-friendly dictionary."""
+        return {
+            "session_id": self.session_id,
+            "user_request": self.user_request,
+            "status": self.status.value if isinstance(self.status, TaskStatus) else str(self.status),
+            "verdict": self.verdict.value if isinstance(self.verdict, ReviewVerdict) else str(self.verdict),
+            "workspace_dir": self.workspace_dir,
+            "git_branch": self.git_branch,
+            "git_commit": self.git_commit,
+            "current_iteration": self.current_iteration,
+            "max_iterations": self.max_iterations,
+            "project_profile": self.project_profile,
+            "environment_profile": self.environment_profile,
+            "task_understanding": self.task_understanding,
+            "task_decomposition": self.task_decomposition,
+            "plan_output": self.plan_output,
+            "specification_output": self.specification_output,
+            "architecture_output": self.architecture_output,
+            "code_output": self.code_output,
+            "test_output": self.test_output,
+            "review_output": self.review_output,
+            "baseline_test_output": self.baseline_test_output,
+            "existing_test_context": self.existing_test_context,
+            "replan_history": [r.to_dict() if hasattr(r, "to_dict") else r for r in self.replan_history],
+            "rollback_history": self.rollback_history,
+            "total_token_usage": self.total_token_usage.to_dict() if hasattr(self.total_token_usage, "to_dict") else self.total_token_usage,
+            "total_cost_usd": self.total_cost_usd,
+            "total_duration_seconds": self.total_duration_seconds,
+            "messages": [m.to_dict() if hasattr(m, "to_dict") else m for m in self.messages],
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+

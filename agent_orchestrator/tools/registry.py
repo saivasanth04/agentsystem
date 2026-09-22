@@ -124,7 +124,8 @@ class ToolRegistry:
     - health_check()
     """
 
-    def __init__(self):
+    def __init__(self, workspace: Optional[Any] = None, **kwargs: Any):
+        self.workspace = workspace
         self._tools: Dict[str, ToolEntry] = {}
         self._aliases: Dict[str, str] = {}
         self._idf: Dict[str, float] = {}

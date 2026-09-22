@@ -1248,6 +1248,15 @@ class BuiltinToolRegistry:
         """Alias for get_all_tools()."""
         return self.get_all_tools()
 
+    def list_tools(self) -> Dict[str, Any]:
+        """Returns dictionary of unique registered tools."""
+        unique_tools = {}
+        for tool in self._tools.values():
+            name = getattr(tool, "name", str(tool))
+            if name not in unique_tools:
+                unique_tools[name] = tool
+        return unique_tools
+
     def resolve_tools_for_capabilities(self, capability_ids: List[str]) -> List[Any]:
         """Resolves tool instances for the given list of capability IDs."""
         from ..capabilities.model import default_capability_registry

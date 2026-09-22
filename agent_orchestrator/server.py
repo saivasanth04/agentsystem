@@ -330,6 +330,23 @@ def _build_file_tree(dir_path: Path, root_path: Path, max_depth: int = 5, curren
 
 
 # ---------------------------------------------------------------------------
+# 0. Health & System APIs
+# ---------------------------------------------------------------------------
+
+@app.get("/health")
+@app.get("/api/health")
+async def get_health():
+    """Returns system health, active sessions, and workspace status."""
+    return {
+        "status": "HEALTHY",
+        "version": "2.0.0",
+        "active_sessions": len(active_orchestrators),
+        "workspace_root": str(WORKSPACE_ROOT),
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+# ---------------------------------------------------------------------------
 # 1. Dashboard APIs
 # ---------------------------------------------------------------------------
 
@@ -1045,6 +1062,7 @@ async def get_workspace_info(path: Optional[str] = None):
     git_info = _get_git_info(target_p)
     return {
         "path": str(target_p),
+        "exists": target_p.exists(),
         "project_name": target_p.name,
         "is_git": git_info["is_git"],
         "git_branch": git_info["branch"],
@@ -1411,6 +1429,21 @@ async def call_mcp_tool_endpoint(req: McpCallRequest):
         return {"success": True, "server": req.server_name, "tool": req.tool_name, "result": res}
     except Exception as e:
         return {"success": False, "server": req.server_name, "tool": req.tool_name, "error": str(e)}
+
+
+@app.get("/api/tools")
+async def list_available_tools():
+    """Lists all built-in tools, MCP tools, and skills available in the environment."""
+    from agent_orchestrator.tools.builtin_tools import BuiltinToolRegistry
+    tools_reg = BuiltinToolRegistry(workspace=workspace)
+    tools_list = []
+    for name, fn in tools_reg.list_tools().items():
+        tools_list.append({
+            "name": name,
+            "description": (fn.__doc__ or "").strip(),
+            "category": "builtin",
+        })
+    return {"tools": tools_list, "total_tools": len(tools_list)}
 
 
 # ---------------------------------------------------------------------------

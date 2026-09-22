@@ -392,6 +392,15 @@ class SQLiteStateStore:
                         conn.execute(f"ALTER TABLE file_changes ADD COLUMN {col}")
                     except Exception:
                         pass
+                for col in [
+                    "workspace_dir TEXT",
+                    "git_branch TEXT",
+                    "git_commit TEXT",
+                ]:
+                    try:
+                        conn.execute(f"ALTER TABLE sessions ADD COLUMN {col}")
+                    except Exception:
+                        pass
                 try:
                     conn.execute("ALTER TABLE operations ADD COLUMN provenance_json TEXT")
                 except Exception:
@@ -404,8 +413,17 @@ class SQLiteStateStore:
                     pass
 
     # ==========================================
-    # SESSION CRUD
+    # SESSION CRUD & STATE ALIASES
     # ==========================================
+    def save_state(self, state: OrchestratorState, session_id: Optional[str] = None):
+        """Convenience alias for save_session that extracts session_id from state if not provided."""
+        sid = session_id or getattr(state, "session_id", None) or "default_session"
+        return self.save_session(sid, state)
+
+    def load_state(self, session_id: str) -> Optional[OrchestratorState]:
+        """Convenience alias for load_session."""
+        return self.load_session(session_id)
+
     def save_session(self, session_id: str, state: OrchestratorState):
         """Persists full OrchestratorState and all associated DAG tasks to SQLite."""
         with self._lock:
@@ -506,6 +524,10 @@ class SQLiteStateStore:
                 return None
 
             state = OrchestratorState(user_request=row["user_request"])
+            state.session_id = session_id
+            state.workspace_dir = row["workspace_dir"] if "workspace_dir" in row.keys() else None
+            state.git_branch = row["git_branch"] if "git_branch" in row.keys() else "main"
+            state.git_commit = row["git_commit"] if "git_commit" in row.keys() else ""
             state.status = TaskStatus(row["status"]) if row["status"] in TaskStatus.__members__ else TaskStatus.PENDING
             state.verdict = ReviewVerdict(row["verdict"]) if row["verdict"] in ReviewVerdict.__members__ else ReviewVerdict.UNDECIDED
             state.project_profile = json.loads(row["project_profile_json"]) if "project_profile_json" in row.keys() and row["project_profile_json"] else None

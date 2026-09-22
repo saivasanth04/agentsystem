@@ -68,9 +68,9 @@ class OrchestratorConfig:
             secret_manager.register_secret(self.api_key)
 
         # Synchronize max_iterations and max_replan_iterations
-        if self.max_iterations != 3 and self.max_replan_iterations == 3:
+        if self.max_iterations != 3:
             self.max_replan_iterations = self.max_iterations
-        elif self.max_replan_iterations != 3 and self.max_iterations == 3:
+        elif self.max_replan_iterations != 3:
             self.max_iterations = self.max_replan_iterations
 
 
