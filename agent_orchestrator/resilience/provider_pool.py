@@ -60,12 +60,14 @@ class ProviderFailoverPool:
 
     def get_client_for_endpoint(self, endpoint: ProviderEndpoint, timeout: float = 90.0) -> OpenAI:
         """Retrieves or creates an OpenAI client for a given provider endpoint."""
+        import httpx
         with self._lock:
             if endpoint.name not in self._clients:
+                client_timeout = httpx.Timeout(connect=2.5, read=timeout, write=10.0, pool=5.0)
                 self._clients[endpoint.name] = OpenAI(
                     api_key=endpoint.api_key,
                     base_url=endpoint.base_url,
-                    timeout=timeout,
+                    timeout=client_timeout,
                 )
             return self._clients[endpoint.name]
 

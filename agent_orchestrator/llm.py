@@ -67,8 +67,13 @@ class LLMClient:
         secret_manager.register_secret(self.api_key)
         self.base_url = base_url or config.base_url
         self.default_model = default_model or config.default_model
+        import httpx
         self.default_seed = default_seed
-        self.client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=config.timeout_seconds)
+        self.client = OpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url,
+            timeout=httpx.Timeout(connect=2.5, read=config.timeout_seconds, write=10.0, pool=5.0)
+        )
         self.throttler = ConcurrencyThrottler(max_concurrency=max_concurrency)
 
         from .resilience import LLMRetryPolicy, ProviderFailoverPool, ResilientLLMCaller
@@ -91,6 +96,28 @@ class LLMClient:
                     base_url=config.fallback_base_url,
                     api_key=config.fallback_api_key,
                 )
+            
+            # Auto-register direct provider fallback endpoints from apikeys.txt for failover resilience
+            try:
+                from pathlib import Path
+                apikeys_path = Path(__file__).resolve().parent.parent / "unified_gateway" / "apikeys.txt"
+                if apikeys_path.exists():
+                    from unified_gateway.gateway.config import parse_apikeys_file
+                    from unified_gateway.gateway.providers import find_provider_spec
+                    keys = parse_apikeys_file(apikeys_path)
+                    for prov_name, key_val in keys.items():
+                        if not key_val:
+                            continue
+                        spec = find_provider_spec(prov_name)
+                        if spec and spec.id in ("groq", "cerebras", "google", "mistral", "openrouter", "nvidia"):
+                            self.provider_pool.add_fallback_endpoint(
+                                name=f"direct_{spec.id}",
+                                base_url=spec.base_url,
+                                api_key=key_val,
+                                models=spec.default_free_models
+                            )
+            except Exception:
+                pass
 
         self.resilient_caller = ResilientLLMCaller(
             throttler=self.throttler,

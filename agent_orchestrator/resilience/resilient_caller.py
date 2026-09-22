@@ -63,7 +63,15 @@ class ResilientLLMCaller:
             if client is None:
                 continue
 
-            for model_name in candidate_models:
+            # Adapt candidate models for endpoint if specific models are specified
+            endpoint_models = candidate_models
+            if endpoint and getattr(endpoint, "models", None):
+                ep_mods = list(endpoint.models)
+                # If none of candidate_models match endpoint models, prepend endpoint models
+                if not any(cm in ep_mods for cm in candidate_models):
+                    endpoint_models = ep_mods + candidate_models
+
+            for model_name in endpoint_models:
                 # Shallow copy kwargs and set model
                 kwargs = copy.copy(base_kwargs)
                 kwargs["model"] = model_name
@@ -117,11 +125,17 @@ class ResilientLLMCaller:
                                 attempt += 1
                                 continue
 
-                        # 2. Non-retryable Client Errors: Fail fast to next model/provider or abort
+                        # 2. Fast Failover on Network/Connection or Auth Errors to next endpoint
+                        if category in (LLMErrorCategory.NETWORK_ERROR, LLMErrorCategory.AUTH_ERROR):
+                            if self.provider_pool and endpoint:
+                                self.provider_pool.mark_failure(endpoint.name, cooldown_seconds=300.0)
+                            break
+
+                        # 3. Non-retryable Client Errors: Fail fast to next model/provider
                         if category == LLMErrorCategory.NON_RETRYABLE:
                             break
 
-                        # 3. Calculate Backoff and Sleep
+                        # 4. Calculate Backoff and Sleep
                         attempt += 1
                         if attempt < self.retry_policy.max_retries:
                             delay = self.retry_policy.calculate_delay(
@@ -134,6 +148,10 @@ class ResilientLLMCaller:
 
                     finally:
                         self.throttler.release()
+
+                # If connection or auth error occurred on this endpoint, advance to next endpoint immediately
+                if category in (LLMErrorCategory.NETWORK_ERROR, LLMErrorCategory.AUTH_ERROR):
+                    break
 
             # Mark endpoint as failed if all models failed on this endpoint
             if self.provider_pool and endpoint:

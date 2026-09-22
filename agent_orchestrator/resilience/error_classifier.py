@@ -15,7 +15,8 @@ class LLMErrorCategory(str, Enum):
     NETWORK_ERROR = "NETWORK_ERROR"        # ConnectionReset, RemoteDisconnected, APIConnectionError
     TIMEOUT = "TIMEOUT"                    # APITimeoutError, ReadTimeout
     CONTEXT_OVERFLOW = "CONTEXT_OVERFLOW"  # context_length_exceeded, maximum context length
-    NON_RETRYABLE = "NON_RETRYABLE"        # 400 (invalid schema), 401, 403, 404
+    AUTH_ERROR = "AUTH_ERROR"              # 401, 403, invalid api key
+    NON_RETRYABLE = "NON_RETRYABLE"        # 400 (invalid schema), 404
 
 
 def _extract_retry_after(exc: Exception) -> Optional[float]:
@@ -81,10 +82,14 @@ def classify_error(exc: Exception) -> Tuple[LLMErrorCategory, Optional[float]]:
     if any(pat in msg for pat in context_overflow_patterns):
         return LLMErrorCategory.CONTEXT_OVERFLOW, None
 
-    # 3. Non-retryable Client Errors (401, 403, 404, or 400 without context overflow)
-    if status_code in (401, 403, 404) or any(
-        k in exc_type_name for k in ("authentication", "permissiondenied", "notfound")
-    ):
+    # 3. Authentication & Permission Errors (401, 403, invalid api key)
+    if status_code in (401, 403) or any(
+        k in exc_type_name for k in ("authentication", "permissiondenied")
+    ) or any(k in msg for k in ("invalid api key", "api_key_invalid", "unauthorized", "forbidden", "permission denied")):
+        return LLMErrorCategory.AUTH_ERROR, None
+
+    # 4. Non-retryable Client Errors (404, or 400 without context overflow)
+    if status_code == 404 or "notfound" in exc_type_name:
         return LLMErrorCategory.NON_RETRYABLE, None
 
     if status_code == 400 or "badrequest" in exc_type_name:

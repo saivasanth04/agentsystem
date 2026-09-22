@@ -467,6 +467,28 @@ PROVIDER_SPECS: Dict[str, ProviderSpec] = {
         default_free_models=["longcat-chat", "longcat-coder"],
         base_priority=70,
     ),
+    "vercel": ProviderSpec(
+        id="vercel",
+        name="Vercel AI Gateway",
+        aliases=["vercel", "vck", "vercel-ai", "vercel ai", "vercel ai gateway"],
+        base_url="https://ai-gateway.vercel.sh/v1",
+        chat_endpoint="/chat/completions",
+        models_endpoint="/models",
+        api_key_header="Authorization",
+        api_key_prefix="Bearer ",
+        supports_models_discovery=True,
+        default_free_models=[
+            "openai/gpt-4o-mini",
+            "anthropic/claude-3-5-haiku",
+            "meta-llama/llama-3.3-70b-instruct",
+            "meta-llama/llama-3.1-8b-instruct",
+            "google/gemini-2.0-flash",
+            "mistral/mistral-small"
+        ],
+        default_model_token_quota=1_000_000,
+        rpm_limit=30,
+        base_priority=80,
+    ),
 }
 
 
