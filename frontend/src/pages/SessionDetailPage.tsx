@@ -9,6 +9,7 @@ import {
   TraceSpan
 } from '../types/orchestrator';
 import { orchestratorApi } from '../api/client';
+import { useWorkspace } from '../context/WorkspaceContext';
 import { StatusBadge } from '../components/StatusBadge';
 import { AgentAvatar } from '../components/AgentAvatar';
 import { DAGCanvas } from '../components/DAGCanvas';
@@ -17,6 +18,8 @@ import { DiffViewer } from '../components/DiffViewer';
 import { TraceWaterfall } from '../components/TraceWaterfall';
 import { ReplanTimeline } from '../components/ReplanTimeline';
 import { JsonViewer } from '../components/JsonViewer';
+import { FileExplorer } from '../components/FileExplorer';
+import { CodeEditor } from '../components/CodeEditor';
 import {
   FolderKanban,
   GitBranch,
@@ -27,18 +30,12 @@ import {
   Sparkles,
   CheckCircle2,
   AlertTriangle,
-  Flame,
-  Clock,
-  DollarSign,
-  Cpu,
-  Layers,
   ArrowLeft,
   Copy,
   Check,
-  Terminal,
   Play,
-  RotateCcw as RollbackIcon,
-  RefreshCw
+  RefreshCw,
+  FolderOpen
 } from 'lucide-react';
 
 interface SessionDetailPageProps {
@@ -47,7 +44,8 @@ interface SessionDetailPageProps {
 }
 
 export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId, navigate }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'dag' | 'messages' | 'verification' | 'diff' | 'replan'>('overview');
+  const { activeWorkspace, openWorkspace } = useWorkspace();
+  const [activeTab, setActiveTab] = useState<'overview' | 'workspace' | 'dag' | 'messages' | 'verification' | 'diff' | 'replan'>('overview');
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [dag, setDag] = useState<DAGSnapshot | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
@@ -58,6 +56,9 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
   const [loading, setLoading] = useState(true);
   const [copiedHash, setCopiedHash] = useState(false);
 
+  // Selected file for IDE workspace tab
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+
   // Message filters
   const [agentFilter, setAgentFilter] = useState('ALL');
   const [messageSearch, setMessageSearch] = useState('');
@@ -65,21 +66,21 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
   const loadAllSessionData = async () => {
     setLoading(true);
     try {
-      const [det, dagData, msgs, ev, df, rep] = await Promise.all([
+      const [det, dagData, msgsData, evData, dfData, repData] = await Promise.all([
         orchestratorApi.getSessionDetail(sessionId),
         orchestratorApi.getSessionDAG(sessionId).catch(() => null),
-        orchestratorApi.getSessionMessages(sessionId).catch(() => []),
+        orchestratorApi.getSessionMessages(sessionId).catch(() => ({ messages: [] })),
         orchestratorApi.getVerificationEvidence(sessionId).catch(() => null),
-        orchestratorApi.getSessionDiff(sessionId).catch(() => []),
-        orchestratorApi.getReplanHistory(sessionId).catch(() => []),
+        orchestratorApi.getSessionDiff(sessionId).catch(() => ({ files_changed: 0, diff_blocks: [] })),
+        orchestratorApi.getReplanHistory(sessionId).catch(() => ({ replan_history: [] })),
       ]);
 
       setDetail(det);
       setDag(dagData);
-      setMessages(msgs);
-      setEvidence(ev);
-      setDiffs(df);
-      setReplans(rep);
+      setMessages(msgsData.messages || []);
+      setEvidence(evData);
+      setDiffs(dfData.diff_blocks || []);
+      setReplans(repData.replan_history || []);
     } catch (err) {
       console.error('Failed to load session details:', err);
     } finally {
@@ -106,6 +107,9 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
     }
   };
 
+  // Determine session target workspace path
+  const sessionWorkspacePath = detail?.workspace_path || detail?.reproducibility?.workspace_path || activeWorkspace?.path;
+
   const filteredMessages = messages.filter((m) => {
     const matchesAgent = agentFilter === 'ALL' || m.agent === agentFilter || m.role === agentFilter;
     const matchesSearch = messageSearch === '' || `${m.content} ${JSON.stringify(m.structured_data || '')}`.toLowerCase().includes(messageSearch.toLowerCase());
@@ -116,24 +120,24 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
 
   if (loading && !detail) {
     return (
-      <div className="flex items-center justify-center h-96 font-mono text-sm text-content-muted">
-        <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-        Loading session snapshot and execution trace...
+      <div className="flex items-center justify-center h-96 font-mono text-sm text-slate-400">
+        <RefreshCw className="w-5 h-5 animate-spin mr-2 text-cyan-400" />
+        Loading session snapshot, artifacts, and execution telemetry...
       </div>
     );
   }
 
   if (!detail) {
     return (
-      <div className="text-center py-20 bg-bg-panel border border-border-subtle rounded-xl max-w-lg mx-auto space-y-4">
-        <AlertTriangle className="w-12 h-12 text-accent-warning mx-auto" />
-        <h3 className="text-base font-bold text-content-primary">Session Not Found</h3>
-        <p className="text-xs font-mono text-content-secondary">
-          No session record with ID <span className="text-accent-primary font-bold">{sessionId}</span> exists.
+      <div className="text-center py-20 bg-slate-900 border border-slate-800 rounded-2xl max-w-lg mx-auto space-y-4 shadow-xl">
+        <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto" />
+        <h3 className="text-base font-bold text-slate-100">Session Not Found</h3>
+        <p className="text-xs font-mono text-slate-400">
+          No session record with ID <span className="text-cyan-400 font-bold">{sessionId}</span> exists.
         </p>
         <button
           onClick={() => navigate('/sessions')}
-          className="px-4 py-2 rounded-lg bg-accent-primary text-white font-mono text-xs font-semibold"
+          className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-mono text-xs font-semibold shadow-md transition-colors"
         >
           Back to Sessions
         </button>
@@ -142,44 +146,56 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-5 pb-12">
       {/* Top Breadcrumb & Controls */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/sessions')}
-            className="p-2 rounded-xl bg-bg-panel hover:bg-bg-elevated border border-border-subtle text-content-secondary hover:text-content-primary transition-colors"
+            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
             title="Back to Sessions"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold font-mono text-content-primary">
+              <h1 className="text-lg font-bold font-mono text-slate-100">
                 {detail.session_id}
               </h1>
               <StatusBadge status={detail.status} size="sm" />
               <StatusBadge status={detail.verdict} size="sm" />
             </div>
-            <p className="text-xs text-content-secondary line-clamp-1 mt-0.5">
+            <p className="text-xs text-slate-400 line-clamp-1 mt-0.5">
               {detail.user_request}
             </p>
           </div>
         </div>
 
+        {/* Action Buttons */}
         <div className="flex items-center gap-3">
+          {sessionWorkspacePath && activeWorkspace?.path !== sessionWorkspacePath && (
+            <button
+              onClick={() => openWorkspace(sessionWorkspacePath)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-cyan-500/40 text-cyan-300 text-xs font-mono font-medium transition-colors"
+              title={`Switch active workspace to ${sessionWorkspacePath}`}
+            >
+              <FolderOpen className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Switch to Session Workspace</span>
+            </button>
+          )}
+
           <button
             onClick={() => navigate(`/sessions/${sessionId}/live`)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-950/60 hover:bg-indigo-900/60 border border-indigo-500/40 text-indigo-300 text-xs font-mono font-semibold transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-500/40 text-cyan-300 text-xs font-mono font-semibold transition-colors"
           >
-            <Play className="w-3.5 h-3.5 fill-indigo-300" />
+            <Play className="w-3.5 h-3.5 fill-current" />
             Live DAG Theater
           </button>
 
           {(detail.status === 'STOPPED' || detail.status === 'FAILED') && (
             <button
               onClick={handleResume}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-accent-primary hover:bg-indigo-600 text-white text-xs font-mono font-bold transition-all shadow"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-mono font-bold transition-all shadow-md"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               Resume Session
@@ -189,13 +205,14 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-border-subtle overflow-x-auto pb-1">
+      <div className="flex items-center gap-1.5 border-b border-slate-800 overflow-x-auto pb-1">
         {[
           { id: 'overview', label: 'Overview', icon: FolderKanban },
+          { id: 'workspace', label: 'IDE & Filesystem', icon: FileCode },
           { id: 'dag', label: 'DAG Execution', icon: GitBranch },
           { id: 'messages', label: 'Messages & Trace', icon: MessageSquare },
           { id: 'verification', label: 'Verification Evidence', icon: ShieldCheck },
-          { id: 'diff', label: 'Files & Diff', icon: FileCode },
+          { id: 'diff', label: 'Git Diff View', icon: GitBranch },
           { id: 'replan', label: 'Re-plan History', icon: RotateCcw },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -207,8 +224,8 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
               onClick={() => setActiveTab(tab.id as any)}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-mono font-medium transition-all ${
                 isActive
-                  ? 'bg-bg-panel text-accent-primary border-t border-x border-border-subtle font-bold'
-                  : 'text-content-secondary hover:text-content-primary hover:bg-bg-elevated/40'
+                  ? 'bg-slate-900 text-cyan-400 border-t border-x border-slate-800 font-bold shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
               }`}
             >
               <Icon className="w-4 h-4" />
@@ -218,90 +235,90 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
         })}
       </div>
 
-      {/* TAB A: OVERVIEW */}
+      {/* TAB 1: OVERVIEW */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
           {/* Header Stats Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <div className="bg-bg-panel border border-border-subtle p-3.5 rounded-xl">
-              <span className="text-[10px] font-mono text-content-muted block mb-1">SCORE</span>
-              <span className={`text-xl font-bold font-mono ${detail.score >= 80 ? 'text-accent-success' : 'text-accent-warning'}`}>
+            <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl shadow-sm">
+              <span className="text-[10px] font-mono text-slate-400 block mb-1">SCORE</span>
+              <span className={`text-xl font-bold font-mono ${detail.score >= 80 ? 'text-emerald-400' : 'text-amber-400'}`}>
                 {detail.score} / 100
               </span>
             </div>
-            <div className="bg-bg-panel border border-border-subtle p-3.5 rounded-xl">
-              <span className="text-[10px] font-mono text-content-muted block mb-1">REPLANS</span>
-              <span className="text-xl font-bold font-mono text-content-primary">
+            <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl shadow-sm">
+              <span className="text-[10px] font-mono text-slate-400 block mb-1">REPLANS</span>
+              <span className="text-xl font-bold font-mono text-slate-100">
                 {detail.iteration} / {detail.max_iterations}
               </span>
             </div>
-            <div className="bg-bg-panel border border-border-subtle p-3.5 rounded-xl">
-              <span className="text-[10px] font-mono text-content-muted block mb-1">DURATION</span>
-              <span className="text-xl font-bold font-mono text-content-primary">
+            <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl shadow-sm">
+              <span className="text-[10px] font-mono text-slate-400 block mb-1">DURATION</span>
+              <span className="text-xl font-bold font-mono text-slate-100">
                 {Math.round(detail.duration_seconds)}s
               </span>
             </div>
-            <div className="bg-bg-panel border border-border-subtle p-3.5 rounded-xl">
-              <span className="text-[10px] font-mono text-content-muted block mb-1">TOTAL COST</span>
-              <span className="text-xl font-bold font-mono text-accent-warning">
+            <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl shadow-sm">
+              <span className="text-[10px] font-mono text-slate-400 block mb-1">TOTAL COST</span>
+              <span className="text-xl font-bold font-mono text-emerald-400">
                 ${detail.total_cost_usd.toFixed(4)}
               </span>
             </div>
-            <div className="bg-bg-panel border border-border-subtle p-3.5 rounded-xl">
-              <span className="text-[10px] font-mono text-content-muted block mb-1">TOKENS</span>
-              <span className="text-xl font-bold font-mono text-accent-info">
+            <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl shadow-sm">
+              <span className="text-[10px] font-mono text-slate-400 block mb-1">TOKENS</span>
+              <span className="text-xl font-bold font-mono text-cyan-400">
                 {Math.round(detail.total_tokens / 1000)}k
               </span>
             </div>
-            <div className="bg-bg-panel border border-border-subtle p-3.5 rounded-xl">
-              <span className="text-[10px] font-mono text-content-muted block mb-1">COMPLETED TASKS</span>
-              <span className="text-xl font-bold font-mono text-accent-success">
-                {detail.execution_summary.completed_tasks} / {detail.execution_summary.total_tasks}
+            <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl shadow-sm">
+              <span className="text-[10px] font-mono text-slate-400 block mb-1">COMPLETED TASKS</span>
+              <span className="text-xl font-bold font-mono text-emerald-400">
+                {detail.execution_summary?.completed_tasks || 0} / {detail.execution_summary?.total_tasks || 0}
               </span>
             </div>
           </div>
 
           {/* Reproducibility Card */}
-          <div className="bg-bg-panel border border-border-subtle rounded-xl p-5 shadow-lg space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-border-subtle">
-              <h3 className="text-xs font-mono font-bold text-content-primary uppercase flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-accent-primary" />
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <h3 className="text-xs font-mono font-bold text-slate-200 uppercase flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-cyan-400" />
                 Deterministic Reproducibility Manifest
               </h3>
-              <span className="text-[11px] font-mono text-content-muted">Seed: {detail.reproducibility.seed}</span>
+              <span className="text-[11px] font-mono text-slate-400">Seed: {detail.reproducibility?.seed || 42}</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs font-mono">
-              <div className="bg-bg-base p-3 rounded-lg border border-border-subtle">
-                <span className="text-[10px] text-content-muted block mb-1">SNAPSHOT ID</span>
-                <span className="text-content-primary font-bold truncate block">
-                  {detail.reproducibility.snapshot_id}
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <span className="text-[10px] text-slate-400 block mb-1">WORKSPACE DIRECTORY</span>
+                <span className="text-slate-200 font-bold truncate block" title={sessionWorkspacePath}>
+                  {sessionWorkspacePath || 'workspace-local'}
                 </span>
               </div>
-              <div className="bg-bg-base p-3 rounded-lg border border-border-subtle">
-                <span className="text-[10px] text-content-muted block mb-1">MANIFEST HASH (12-CHAR)</span>
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <span className="text-[10px] text-slate-400 block mb-1">MANIFEST HASH (12-CHAR)</span>
                 <div className="flex items-center justify-between">
-                  <span className="text-accent-primary font-bold">
-                    {detail.reproducibility.manifest_hash.slice(0, 12)}
+                  <span className="text-cyan-400 font-bold">
+                    {(detail.reproducibility?.manifest_hash || 'a1b2c3d4e5f6').slice(0, 12)}
                   </span>
                   <button
-                    onClick={() => handleCopy(detail.reproducibility.manifest_hash)}
-                    className="p-0.5 hover:text-white text-content-muted"
+                    onClick={() => handleCopy(detail.reproducibility?.manifest_hash || '')}
+                    className="p-0.5 hover:text-white text-slate-400"
                   >
-                    {copiedHash ? <Check className="w-3.5 h-3.5 text-accent-success" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedHash ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               </div>
-              <div className="bg-bg-base p-3 rounded-lg border border-border-subtle">
-                <span className="text-[10px] text-content-muted block mb-1">GIT WORKING TREE</span>
-                <span className={`font-bold ${detail.reproducibility.git_dirty ? 'text-amber-400' : 'text-emerald-400'}`}>
-                  {detail.reproducibility.git_dirty ? 'DIRTY (Uncommitted)' : 'CLEAN'}
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <span className="text-[10px] text-slate-400 block mb-1">GIT WORKING TREE</span>
+                <span className={`font-bold ${detail.reproducibility?.git_dirty ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {detail.reproducibility?.git_dirty ? 'DIRTY (Uncommitted)' : 'CLEAN'}
                 </span>
               </div>
-              <div className="bg-bg-base p-3 rounded-lg border border-border-subtle">
-                <span className="text-[10px] text-content-muted block mb-1">ORCHESTRATOR VERSION</span>
-                <span className="text-content-primary font-bold">
-                  v{detail.reproducibility.orchestrator_version}
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <span className="text-[10px] text-slate-400 block mb-1">ORCHESTRATOR VERSION</span>
+                <span className="text-slate-200 font-bold">
+                  v{detail.reproducibility?.orchestrator_version || '2.0'}
                 </span>
               </div>
             </div>
@@ -309,19 +326,19 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
 
           {/* Final Reviewer Report Panel */}
           {detail.final_report && (
-            <div className="bg-bg-panel border border-border-subtle rounded-xl p-6 shadow-xl space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-border-subtle">
-                <h3 className="text-sm font-bold font-mono text-content-primary uppercase flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-accent-success" />
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <h3 className="text-sm font-bold font-mono text-slate-200 uppercase flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-emerald-400" />
                   Final Reviewer Quality Report & Verdict
                 </h3>
                 <StatusBadge status={detail.final_report.verdict} size="md" />
               </div>
 
               {/* Summary */}
-              <div className="bg-bg-base p-4 rounded-xl border border-border-subtle">
-                <h4 className="text-xs font-mono font-bold text-content-muted uppercase mb-1.5">Executive Summary</h4>
-                <p className="text-sm text-content-primary font-sans leading-relaxed">
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                <h4 className="text-xs font-mono font-bold text-slate-400 uppercase mb-1.5">Executive Summary</h4>
+                <p className="text-sm text-slate-200 font-sans leading-relaxed">
                   {detail.final_report.reviewer_summary}
                 </p>
               </div>
@@ -335,7 +352,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
                   </h4>
                   <ul className="space-y-1.5">
                     {detail.final_report.strengths.map((str, i) => (
-                      <li key={i} className="text-xs text-content-secondary bg-bg-base p-2.5 rounded-lg border border-emerald-500/20 flex items-start gap-2">
+                      <li key={i} className="text-xs text-slate-300 bg-slate-950 p-2.5 rounded-xl border border-emerald-500/20 flex items-start gap-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 shrink-0" />
                         <span>{str}</span>
                       </li>
@@ -353,16 +370,16 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
                   </h4>
                   <div className="space-y-2">
                     {detail.final_report.issues.map((iss, i) => (
-                      <div key={i} className="bg-bg-base p-3 rounded-lg border border-rose-500/30 text-xs space-y-1">
+                      <div key={i} className="bg-slate-950 p-3 rounded-xl border border-rose-500/30 text-xs space-y-1">
                         <div className="flex items-center justify-between">
                           <span className="font-bold text-rose-300 font-mono">{iss.title}</span>
                           <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-950 text-rose-400 border border-rose-500/30 uppercase">
                             {iss.severity}
                           </span>
                         </div>
-                        <p className="text-content-secondary">{iss.description}</p>
+                        <p className="text-slate-300">{iss.description}</p>
                         {iss.file_location && (
-                          <span className="text-[11px] font-mono text-content-muted block">
+                          <span className="text-[11px] font-mono text-slate-400 block">
                             File: {iss.file_location}
                           </span>
                         )}
@@ -376,30 +393,62 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
         </div>
       )}
 
-      {/* TAB B: DAG EXECUTION */}
+      {/* TAB 2: IDE & FILESYSTEM */}
+      {activeTab === 'workspace' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[650px]">
+            {/* Left: File Explorer */}
+            <div className="lg:col-span-4 h-full">
+              <FileExplorer
+                selectedFile={selectedFile}
+                onSelectFile={setSelectedFile}
+                workspacePath={sessionWorkspacePath}
+              />
+            </div>
+
+            {/* Right: Code Editor & Viewer */}
+            <div className="lg:col-span-8 h-full">
+              {selectedFile ? (
+                <CodeEditor
+                  filepath={selectedFile}
+                  workspacePath={sessionWorkspacePath}
+                  onClose={() => setSelectedFile(null)}
+                />
+              ) : (
+                <div className="h-full bg-slate-900 border border-slate-800 rounded-2xl flex flex-col items-center justify-center text-slate-500 space-y-2">
+                  <FileCode className="w-10 h-10 stroke-1 text-slate-600" />
+                  <p className="text-xs font-mono">Select a file from the explorer to open and edit.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: DAG EXECUTION */}
       {activeTab === 'dag' && <DAGCanvas dag={dag} />}
 
-      {/* TAB C: MESSAGES / TRACE */}
+      {/* TAB 4: MESSAGES / TRACE */}
       {activeTab === 'messages' && (
         <div className="space-y-4">
           {/* Filter Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-bg-panel border border-border-subtle rounded-xl">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-900 border border-slate-800 rounded-2xl">
             <div className="flex items-center gap-2 flex-1 max-w-sm">
               <input
                 type="text"
                 value={messageSearch}
                 onChange={(e) => setMessageSearch(e.target.value)}
                 placeholder="Search conversation trace..."
-                className="w-full bg-bg-base border border-border-subtle rounded-lg px-3 py-1.5 text-xs font-mono text-content-primary placeholder-content-muted focus:outline-none focus:border-accent-primary"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs font-mono text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
               />
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-xs font-mono text-content-muted">AGENT:</span>
+              <span className="text-xs font-mono text-slate-400">AGENT:</span>
               <select
                 value={agentFilter}
                 onChange={(e) => setAgentFilter(e.target.value)}
-                className="bg-bg-base border border-border-subtle rounded-lg px-2.5 py-1.5 text-xs font-mono text-content-primary focus:outline-none"
+                className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:outline-none"
               >
                 <option value="ALL">All Agents</option>
                 {uniqueAgents.map((ag) => (
@@ -412,30 +461,30 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
           {/* Messages Timeline */}
           <div className="space-y-3">
             {filteredMessages.length === 0 ? (
-              <div className="p-8 text-center text-xs font-mono text-content-muted bg-bg-panel border border-border-subtle rounded-xl">
+              <div className="p-8 text-center text-xs font-mono text-slate-500 bg-slate-900 border border-slate-800 rounded-2xl">
                 No conversation messages match the current filters.
               </div>
             ) : (
               filteredMessages.map((msg) => (
                 <div
                   key={msg.id}
-                  className="bg-bg-panel border border-border-subtle rounded-xl p-4 shadow-sm space-y-2.5"
+                  className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-sm space-y-2.5"
                 >
-                  <div className="flex items-center justify-between pb-2 border-b border-border-subtle/50">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
                     <div className="flex items-center gap-2.5">
                       <AgentAvatar agentName={msg.agent} role={msg.role} size="sm" showRoleLabel={true} />
                       {msg.stage && (
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-bg-base border border-border-subtle text-accent-info uppercase">
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-cyan-400 uppercase">
                           {msg.stage}
                         </span>
                       )}
                     </div>
-                    <span className="text-[10px] font-mono text-content-muted">
+                    <span className="text-[10px] font-mono text-slate-400">
                       {new Date(msg.timestamp).toLocaleTimeString()}
                     </span>
                   </div>
 
-                  <p className="text-xs text-content-primary font-sans leading-relaxed whitespace-pre-wrap">
+                  <p className="text-xs text-slate-200 font-sans leading-relaxed whitespace-pre-wrap">
                     {msg.content}
                   </p>
 
@@ -449,7 +498,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
         </div>
       )}
 
-      {/* TAB D: VERIFICATION EVIDENCE */}
+      {/* TAB 5: VERIFICATION EVIDENCE */}
       {activeTab === 'verification' && (
         <div className="space-y-6">
           <EvidenceMatrix evidence={evidence} />
@@ -457,10 +506,10 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
         </div>
       )}
 
-      {/* TAB E: FILES & DIFF */}
+      {/* TAB 6: FILES & DIFF */}
       {activeTab === 'diff' && <DiffViewer diffs={diffs} />}
 
-      {/* TAB F: RE-PLAN HISTORY */}
+      {/* TAB 7: RE-PLAN HISTORY */}
       {activeTab === 'replan' && <ReplanTimeline records={replans} />}
     </div>
   );

@@ -17,6 +17,117 @@ export type ReviewVerdict = 'PASS' | 'FAIL' | 'UNDECIDED';
 
 export type ModelTier = 'FAST' | 'BALANCED' | 'FRONTIER' | 'CODING' | 'REASONING' | 'FALLBACK';
 
+export interface WorkspaceInfo {
+  path: string;
+  project_name: string;
+  is_git: boolean;
+  git_branch: string;
+  git_commit?: string;
+  git_dirty: boolean;
+  dirty_count: number;
+  is_accessible: boolean;
+  file_count?: number;
+}
+
+export interface WorkspaceValidation {
+  valid: boolean;
+  path: string;
+  resolved_path: string;
+  project_name: string;
+  is_git: boolean;
+  git_branch: string;
+  git_commit?: string;
+  git_dirty: boolean;
+  dirty_count: number;
+  file_count: number;
+  accessible: boolean;
+  error: string | null;
+}
+
+export interface RecentWorkspace {
+  path: string;
+  project_name: string;
+  last_opened: string;
+  is_git: boolean;
+  git_branch: string;
+}
+
+export interface FileTreeNode {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  size?: number;
+  extension?: string;
+  modified_at?: string | null;
+  children?: FileTreeNode[];
+  count?: number;
+}
+
+export interface WorkspaceFile {
+  filepath: string;
+  content: string;
+  lines: number;
+  size: number;
+  modified_at: string | null;
+  is_binary: boolean;
+}
+
+export interface PreflightCheck {
+  id: string;
+  name: string;
+  status: 'PASS' | 'WARN' | 'FAIL';
+  message: string;
+}
+
+export interface PreflightResult {
+  ready: boolean;
+  workspace_path: string;
+  checks: PreflightCheck[];
+  diagnostics: string[];
+}
+
+export interface TerminalExecutionResult {
+  command: string;
+  stdout: string;
+  stderr: string;
+  exit_code: number;
+  duration_ms: number;
+  workspace_path: string;
+}
+
+export interface McpTool {
+  name: string;
+  description: string;
+  parameters: Record<string, any>;
+}
+
+export interface McpServerInfo {
+  name: string;
+  status: 'CONNECTED' | 'DISCONNECTED' | 'ERROR';
+  tool_count: number;
+  tools: McpTool[];
+  latency_ms: number;
+  capabilities: string[];
+}
+
+export interface ContextPreview {
+  workspace_path: string;
+  tech_stack: string[];
+  focal_files: Array<{
+    filepath: string;
+    relevance_score: number;
+    provenance: string;
+  }>;
+  context_budget: {
+    total_tokens_allocated: number;
+    focal_files_tokens: number;
+    repo_map_tokens: number;
+    skills_tokens: number;
+    conversation_history_tokens: number;
+  };
+  retrieved_skills: string[];
+}
+
 export interface ExecutableTask {
   id: string;
   name?: string;
@@ -81,12 +192,16 @@ export interface SessionSummary {
   created_at: string;
   updated_at: string;
   duration_seconds: number;
+  workspace_path?: string;
+  git_branch?: string;
+  git_commit?: string;
   manifest_hash?: string;
   snapshot_id?: string;
   git_dirty?: boolean;
 }
 
 export interface SessionDetail extends SessionSummary {
+  workspace_path?: string;
   reproducibility: {
     snapshot_id: string;
     manifest_hash: string;
@@ -94,6 +209,9 @@ export interface SessionDetail extends SessionSummary {
     seed: number;
     python_version: string;
     orchestrator_version: string;
+    workspace_path?: string;
+    git_branch?: string;
+    git_commit?: string;
   };
   execution_summary: {
     total_tasks: number;

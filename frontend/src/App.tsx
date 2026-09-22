@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { WorkspaceProvider } from './context/WorkspaceContext';
 import { AppShell } from './components/AppShell';
 import { DashboardPage } from './pages/DashboardPage';
 import { NewTaskPage } from './pages/NewTaskPage';
@@ -86,8 +87,10 @@ export const App: React.FC = () => {
   };
 
   return (
-    <AppShell currentRoute={currentRoute} navigate={navigate} activeSessionId={activeSessionId}>
-      {renderCurrentPage()}
-    </AppShell>
+    <WorkspaceProvider>
+      <AppShell currentRoute={currentRoute} navigate={navigate} activeSessionId={activeSessionId}>
+        {renderCurrentPage()}
+      </AppShell>
+    </WorkspaceProvider>
   );
 };

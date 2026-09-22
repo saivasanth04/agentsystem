@@ -5,7 +5,6 @@ import { ArtifactCard } from '../components/ArtifactCard';
 import {
   Boxes,
   Search,
-  Filter,
   RefreshCw,
   FileText,
   FileSpreadsheet,
@@ -19,7 +18,7 @@ interface ArtifactsPageProps {
   navigate: (route: string) => void;
 }
 
-export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ navigate }) => {
+export const ArtifactsPage: React.FC<ArtifactsPageProps> = () => {
   const [artifacts, setArtifacts] = useState<ArtifactMeta[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -41,7 +40,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ navigate }) => {
       const data = await orchestratorApi.getArtifacts({
         category: selectedCategory !== 'ALL' ? selectedCategory : undefined,
       });
-      setArtifacts(data);
+      setArtifacts(data.artifacts || []);
     } catch (err) {
       console.error('Failed to load artifacts:', err);
     } finally {
@@ -63,21 +62,21 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ navigate }) => {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold font-sans text-content-primary tracking-tight flex items-center gap-2.5">
-            <Boxes className="w-6 h-6 text-accent-primary" />
+          <h1 className="text-2xl font-bold font-sans text-slate-100 tracking-tight flex items-center gap-2.5">
+            <Boxes className="w-6 h-6 text-cyan-400" />
             Artifacts & Storage Browser
           </h1>
-          <p className="text-xs font-mono text-content-secondary mt-1">
+          <p className="text-xs font-mono text-slate-400 mt-1">
             Immutable workspace artifacts, change specifications, patches, and execution logs
           </p>
         </div>
 
         <button
           onClick={loadArtifacts}
-          className="p-2 rounded-xl bg-bg-panel hover:bg-bg-elevated border border-border-subtle text-content-secondary hover:text-content-primary transition-colors"
+          className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-slate-100 transition-colors"
           title="Refresh Artifacts"
         >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-cyan-400' : ''}`} />
         </button>
       </div>
 
@@ -95,8 +94,8 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ navigate }) => {
                 onClick={() => setSelectedCategory(cat.id)}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-mono transition-all shrink-0 ${
                   isSelected
-                    ? 'bg-accent-primary text-white font-bold shadow-md shadow-accent-primary/20'
-                    : 'bg-bg-panel hover:bg-bg-elevated border border-border-subtle text-content-secondary hover:text-content-primary'
+                    ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold shadow-md shadow-cyan-500/20'
+                    : 'bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -108,23 +107,23 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({ navigate }) => {
 
         {/* Search */}
         <div className="relative max-w-md">
-          <Search className="w-4 h-4 absolute left-3 top-2.5 text-content-muted" />
+          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search artifacts by name or path..."
-            className="w-full bg-bg-panel border border-border-subtle rounded-xl pl-9 pr-4 py-2 text-xs font-mono text-content-primary placeholder-content-muted focus:outline-none focus:border-accent-primary"
+            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs font-mono text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
           />
         </div>
       </div>
 
       {/* Artifacts Grid */}
       {filteredArtifacts.length === 0 ? (
-        <div className="p-16 text-center bg-bg-panel border border-border-subtle rounded-2xl space-y-2">
-          <Boxes className="w-12 h-12 text-content-muted mx-auto" />
-          <h3 className="text-sm font-bold text-content-primary">No Artifacts Found</h3>
-          <p className="text-xs font-mono text-content-secondary">
+        <div className="p-16 text-center bg-slate-900 border border-slate-800 rounded-2xl space-y-2">
+          <Boxes className="w-12 h-12 text-slate-600 mx-auto" />
+          <h3 className="text-sm font-bold text-slate-100">No Artifacts Found</h3>
+          <p className="text-xs font-mono text-slate-400">
             Generated plans, patches, test reports, and logs will be cataloged here.
           </p>
         </div>

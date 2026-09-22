@@ -8,13 +8,11 @@ import {
   CheckCircle2,
   Cpu,
   DollarSign,
-  PlayCircle,
   PlusCircle,
   AlertTriangle,
   FolderKanban,
   ArrowUpRight,
   RotateCcw,
-  Trash2,
   RefreshCw
 } from 'lucide-react';
 
@@ -35,7 +33,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ navigate }) => {
         orchestratorApi.getSessions({ limit: 8 }),
       ]);
       setKpis(kpiData);
-      setRecentSessions(sessionsData);
+      setRecentSessions(sessionsData.sessions || []);
     } catch (err) {
       console.error('Failed to load dashboard metrics:', err);
     } finally {
@@ -60,29 +58,29 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ navigate }) => {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Page Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold font-sans text-content-primary tracking-tight">
+          <h1 className="text-2xl font-bold font-sans text-slate-100 tracking-tight">
             Mission Control Dashboard
           </h1>
-          <p className="text-xs font-mono text-content-secondary mt-1">
-            Real-time multi-agent execution telemetry, verdict rates, and system health
+          <p className="text-xs font-mono text-slate-400 mt-1">
+            Real-time multi-agent execution telemetry, verdict rates, and workspace system health
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <button
             onClick={loadData}
-            className="p-2 rounded-xl bg-bg-panel hover:bg-bg-elevated border border-border-subtle text-content-secondary hover:text-content-primary transition-colors"
+            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-slate-100 transition-colors"
             title="Refresh Metrics"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-cyan-400' : ''}`} />
           </button>
           <button
             onClick={() => navigate('/tasks/new')}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-accent-primary hover:bg-indigo-600 text-white font-semibold text-xs shadow-lg shadow-accent-primary/20 transition-all font-mono"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold text-xs shadow-lg shadow-cyan-500/20 transition-all font-mono"
           >
             <PlusCircle className="w-4 h-4" />
             Launch New Task
@@ -93,63 +91,63 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ navigate }) => {
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Total Sessions */}
-        <div className="bg-bg-panel border border-border-subtle rounded-xl p-4 shadow-md flex flex-col justify-between">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-mono text-content-muted uppercase">Total Runs</span>
-            <FolderKanban className="w-4 h-4 text-accent-primary" />
+            <span className="text-xs font-mono text-slate-400 uppercase">Total Runs</span>
+            <FolderKanban className="w-4 h-4 text-cyan-400" />
           </div>
-          <span className="text-2xl font-bold font-mono text-content-primary">
+          <span className="text-2xl font-bold font-mono text-slate-100">
             {kpis?.total_sessions ?? 0}
           </span>
-          <span className="text-[10px] font-mono text-content-secondary mt-1">Orchestrated workflows</span>
+          <span className="text-[10px] font-mono text-slate-500 mt-1">Orchestrated workflows</span>
         </div>
 
         {/* PASS Rate */}
-        <div className="bg-bg-panel border border-border-subtle rounded-xl p-4 shadow-md flex flex-col justify-between">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-mono text-content-muted uppercase">Pass Rate</span>
-            <CheckCircle2 className="w-4 h-4 text-accent-success" />
+            <span className="text-xs font-mono text-slate-400 uppercase">Pass Rate</span>
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           </div>
-          <span className="text-2xl font-bold font-mono text-accent-success">
+          <span className="text-2xl font-bold font-mono text-emerald-400">
             {kpis?.pass_rate_pct ?? 0}%
           </span>
-          <span className="text-[10px] font-mono text-content-secondary mt-1">Ground-truth verified</span>
+          <span className="text-[10px] font-mono text-slate-500 mt-1">Ground-truth verified</span>
         </div>
 
         {/* Avg Tokens */}
-        <div className="bg-bg-panel border border-border-subtle rounded-xl p-4 shadow-md flex flex-col justify-between">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-mono text-content-muted uppercase">Avg Tokens/Run</span>
-            <Cpu className="w-4 h-4 text-accent-info" />
+            <span className="text-xs font-mono text-slate-400 uppercase">Avg Tokens/Run</span>
+            <Cpu className="w-4 h-4 text-cyan-400" />
           </div>
-          <span className="text-2xl font-bold font-mono text-content-primary">
+          <span className="text-2xl font-bold font-mono text-slate-100">
             {((kpis?.avg_tokens_per_session ?? 0) / 1000).toFixed(1)}k
           </span>
-          <span className="text-[10px] font-mono text-content-secondary mt-1">Prompt + Completion</span>
+          <span className="text-[10px] font-mono text-slate-500 mt-1">Prompt + Completion</span>
         </div>
 
         {/* Total Cost */}
-        <div className="bg-bg-panel border border-border-subtle rounded-xl p-4 shadow-md flex flex-col justify-between">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-mono text-content-muted uppercase">Cumulative Cost</span>
-            <DollarSign className="w-4 h-4 text-accent-warning" />
+            <span className="text-xs font-mono text-slate-400 uppercase">Cumulative Cost</span>
+            <DollarSign className="w-4 h-4 text-amber-400" />
           </div>
-          <span className="text-2xl font-bold font-mono text-accent-warning">
+          <span className="text-2xl font-bold font-mono text-amber-400">
             ${(kpis?.total_cost_usd ?? 0).toFixed(4)}
           </span>
-          <span className="text-[10px] font-mono text-content-secondary mt-1">USD across all tiers</span>
+          <span className="text-[10px] font-mono text-slate-500 mt-1">USD across all tiers</span>
         </div>
 
         {/* Active Runs */}
-        <div className="bg-bg-panel border border-border-subtle rounded-xl p-4 shadow-md flex flex-col justify-between">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-mono text-content-muted uppercase">Active Runs</span>
-            <Activity className="w-4 h-4 text-accent-info animate-pulse" />
+            <span className="text-xs font-mono text-slate-400 uppercase">Active Runs</span>
+            <Activity className="w-4 h-4 text-cyan-400 animate-pulse" />
           </div>
-          <span className="text-2xl font-bold font-mono text-accent-info">
+          <span className="text-2xl font-bold font-mono text-cyan-400">
             {kpis?.active_runs_count ?? 0}
           </span>
-          <span className="text-[10px] font-mono text-content-secondary mt-1">Live parallel DAGs</span>
+          <span className="text-[10px] font-mono text-slate-500 mt-1">Live parallel DAGs</span>
         </div>
       </div>
 
@@ -172,14 +170,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ navigate }) => {
       {/* Recent Sessions Table & Alerts Feed */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Sessions */}
-        <div className="lg:col-span-2 bg-bg-panel border border-border-subtle rounded-xl p-5 shadow-lg space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-border-subtle">
-            <h3 className="text-sm font-bold font-mono text-content-primary uppercase">
+        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <h3 className="text-sm font-bold font-mono text-slate-100 uppercase">
               Recent Orchestration Runs
             </h3>
             <button
               onClick={() => navigate('/sessions')}
-              className="text-xs font-mono text-accent-primary hover:underline flex items-center gap-1"
+              className="text-xs font-mono text-cyan-400 hover:underline flex items-center gap-1"
             >
               View All <ArrowUpRight className="w-3.5 h-3.5" />
             </button>
@@ -188,7 +186,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ navigate }) => {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs font-mono">
               <thead>
-                <tr className="text-content-muted border-b border-border-subtle/50 pb-2">
+                <tr className="text-slate-400 border-b border-slate-800 pb-2">
                   <th className="py-2">Session ID</th>
                   <th className="py-2">Task Request</th>
                   <th className="py-2">Status</th>
@@ -197,10 +195,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ navigate }) => {
                   <th className="py-2 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border-subtle/30">
+              <tbody className="divide-y divide-slate-800/40">
                 {recentSessions.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-content-muted">
+                    <td colSpan={6} className="py-8 text-center text-slate-500">
                       No sessions recorded yet. Launch your first task above!
                     </td>
                   </tr>
@@ -209,12 +207,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ navigate }) => {
                     <tr
                       key={s.session_id}
                       onClick={() => navigate(`/sessions/${s.session_id}`)}
-                      className="hover:bg-bg-elevated/60 cursor-pointer transition-colors group"
+                      className="hover:bg-slate-800/40 cursor-pointer transition-colors group"
                     >
-                      <td className="py-3 font-bold text-accent-primary">
+                      <td className="py-3 font-bold text-cyan-400">
                         {s.session_id.slice(0, 10)}...
                       </td>
-                      <td className="py-3 max-w-xs truncate text-content-primary font-sans font-medium">
+                      <td className="py-3 max-w-xs truncate text-slate-200 font-sans font-medium">
                         {s.user_request}
                       </td>
                       <td className="py-3">
@@ -223,21 +221,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ navigate }) => {
                       <td className="py-3">
                         <StatusBadge status={s.verdict} size="sm" />
                       </td>
-                      <td className="py-3 text-content-secondary">
+                      <td className="py-3 text-slate-400">
                         ${s.total_cost_usd.toFixed(4)}
                       </td>
                       <td className="py-3 text-right">
                         {s.status === 'STOPPED' || s.status === 'FAILED' ? (
                           <button
                             onClick={(e) => handleResume(s.session_id, e)}
-                            className="px-2 py-1 rounded bg-accent-primary/20 hover:bg-accent-primary/40 text-accent-primary text-[10px] font-mono border border-accent-primary/40 flex items-center gap-1 ml-auto"
+                            className="px-2 py-1 rounded bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-300 text-[10px] font-mono border border-cyan-500/40 flex items-center gap-1 ml-auto"
                             title="Resume Crashed Session"
                           >
                             <RotateCcw className="w-3 h-3" />
                             Resume
                           </button>
                         ) : (
-                          <span className="text-content-muted group-hover:text-accent-primary text-[11px]">
+                          <span className="text-slate-500 group-hover:text-cyan-400 text-[11px]">
                             Inspect →
                           </span>
                         )}
@@ -251,9 +249,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ navigate }) => {
         </div>
 
         {/* Alerts & Circuit Breakers Feed */}
-        <div className="lg:col-span-1 bg-bg-panel border border-border-subtle rounded-xl p-5 shadow-lg space-y-3">
-          <div className="flex items-center justify-between pb-3 border-b border-border-subtle">
-            <h3 className="text-sm font-bold font-mono text-content-primary uppercase flex items-center gap-2">
+        <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-3">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <h3 className="text-sm font-bold font-mono text-slate-100 uppercase flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-400" />
               System Alerts Feed
             </h3>
@@ -261,24 +259,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ navigate }) => {
 
           <div className="space-y-2.5 max-h-80 overflow-y-auto">
             {(!kpis?.alerts || kpis.alerts.length === 0) ? (
-              <div className="text-center py-10 text-xs font-mono text-content-muted">
+              <div className="text-center py-10 text-xs font-mono text-slate-500">
                 All systems nominal. No circuit breakers or budget warnings triggered.
               </div>
             ) : (
               kpis.alerts.map((alert) => (
                 <div
                   key={alert.id}
-                  className="p-3 rounded-lg bg-bg-base border border-border-subtle text-xs space-y-1"
+                  className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-1"
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-500/30">
                       {alert.type}
                     </span>
-                    <span className="text-[10px] font-mono text-content-muted">
+                    <span className="text-[10px] font-mono text-slate-500">
                       {new Date(alert.timestamp).toLocaleTimeString()}
                     </span>
                   </div>
-                  <p className="text-content-secondary font-mono text-[11px] leading-relaxed">
+                  <p className="text-slate-300 font-mono text-[11px] leading-relaxed">
                     {alert.message}
                   </p>
                 </div>

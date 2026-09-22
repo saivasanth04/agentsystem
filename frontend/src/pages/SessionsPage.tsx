@@ -5,15 +5,8 @@ import { StatusBadge } from '../components/StatusBadge';
 import {
   FolderKanban,
   Search,
-  Filter,
   Download,
-  RotateCcw,
-  Trash2,
-  Calendar,
-  DollarSign,
-  Cpu,
   ArrowRight,
-  CheckCircle2,
   RefreshCw
 } from 'lucide-react';
 
@@ -32,7 +25,7 @@ export const SessionsPage: React.FC<SessionsPageProps> = ({ navigate }) => {
     setLoading(true);
     try {
       const data = await orchestratorApi.getSessions();
-      setSessions(data);
+      setSessions(data.sessions || []);
     } catch (err) {
       console.error('Failed to load sessions:', err);
     } finally {
@@ -64,30 +57,30 @@ export const SessionsPage: React.FC<SessionsPageProps> = ({ navigate }) => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-6 pb-12">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold font-sans text-content-primary tracking-tight flex items-center gap-2.5">
-            <FolderKanban className="w-6 h-6 text-accent-primary" />
+          <h1 className="text-2xl font-bold font-sans text-slate-100 tracking-tight flex items-center gap-2.5">
+            <FolderKanban className="w-6 h-6 text-cyan-400" />
             Orchestration Sessions
           </h1>
-          <p className="text-xs font-mono text-content-secondary mt-1">
-            Historical ledger of all multi-agent workflows, verdicts, and resource consumption
+          <p className="text-xs font-mono text-slate-400 mt-1">
+            Historical ledger of all multi-agent workflows, verdicts, and workspace resource consumption
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <button
             onClick={loadSessions}
-            className="p-2 rounded-xl bg-bg-panel hover:bg-bg-elevated border border-border-subtle text-content-secondary hover:text-content-primary transition-colors"
+            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-slate-100 transition-colors"
             title="Refresh Sessions"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-cyan-400' : ''}`} />
           </button>
           <button
             onClick={handleExportJson}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-bg-panel hover:bg-bg-elevated border border-border-subtle text-content-primary text-xs font-mono transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-200 text-xs font-mono transition-colors"
           >
             <Download className="w-4 h-4" />
             Export JSON
@@ -96,16 +89,16 @@ export const SessionsPage: React.FC<SessionsPageProps> = ({ navigate }) => {
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-bg-panel border border-border-subtle rounded-xl shadow-md">
+      <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-slate-900 border border-slate-800 rounded-2xl shadow-md">
         <div className="flex items-center gap-3 flex-1 min-w-[280px]">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 text-content-muted" />
+            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Filter by session ID or request query..."
-              className="w-full bg-bg-base border border-border-subtle rounded-lg pl-9 pr-4 py-2 text-xs font-mono text-content-primary placeholder-content-muted focus:outline-none focus:border-accent-primary"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs font-mono text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
             />
           </div>
         </div>
@@ -113,11 +106,11 @@ export const SessionsPage: React.FC<SessionsPageProps> = ({ navigate }) => {
         <div className="flex items-center gap-3">
           {/* Status Filter */}
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-content-muted">STATUS:</span>
+            <span className="text-xs font-mono text-slate-400">STATUS:</span>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-bg-base border border-border-subtle rounded-lg px-2.5 py-1.5 text-xs font-mono text-content-primary focus:outline-none focus:border-accent-primary"
+              className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500"
             >
               <option value="ALL">All Statuses</option>
               <option value="COMPLETED">Completed</option>
@@ -130,11 +123,11 @@ export const SessionsPage: React.FC<SessionsPageProps> = ({ navigate }) => {
 
           {/* Verdict Filter */}
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-content-muted">VERDICT:</span>
+            <span className="text-xs font-mono text-slate-400">VERDICT:</span>
             <select
               value={verdictFilter}
               onChange={(e) => setVerdictFilter(e.target.value)}
-              className="bg-bg-base border border-border-subtle rounded-lg px-2.5 py-1.5 text-xs font-mono text-content-primary focus:outline-none focus:border-accent-primary"
+              className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500"
             >
               <option value="ALL">All Verdicts</option>
               <option value="PASS">PASS</option>
@@ -146,10 +139,10 @@ export const SessionsPage: React.FC<SessionsPageProps> = ({ navigate }) => {
       </div>
 
       {/* Sessions Table */}
-      <div className="bg-bg-panel border border-border-subtle rounded-xl overflow-hidden shadow-xl">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs font-mono">
-            <thead className="bg-bg-elevated/70 text-content-muted uppercase border-b border-border-subtle">
+            <thead className="bg-slate-950 text-slate-400 uppercase border-b border-slate-800">
               <tr>
                 <th className="py-3 px-4">Session ID</th>
                 <th className="py-3 px-4">User Request</th>
@@ -162,10 +155,10 @@ export const SessionsPage: React.FC<SessionsPageProps> = ({ navigate }) => {
                 <th className="py-3 px-4 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border-subtle/30">
+            <tbody className="divide-y divide-slate-800/40">
               {filteredSessions.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-content-muted">
+                  <td colSpan={9} className="py-12 text-center text-slate-500">
                     No matching sessions found.
                   </td>
                 </tr>
@@ -174,12 +167,12 @@ export const SessionsPage: React.FC<SessionsPageProps> = ({ navigate }) => {
                   <tr
                     key={s.session_id}
                     onClick={() => navigate(`/sessions/${s.session_id}`)}
-                    className="hover:bg-bg-elevated/70 cursor-pointer transition-colors group"
+                    className="hover:bg-slate-800/40 cursor-pointer transition-colors group"
                   >
-                    <td className="py-3 px-4 font-bold text-accent-primary">
+                    <td className="py-3 px-4 font-bold text-cyan-400">
                       {s.session_id.slice(0, 12)}...
                     </td>
-                    <td className="py-3 px-4 max-w-sm truncate text-content-primary font-sans font-medium">
+                    <td className="py-3 px-4 max-w-sm truncate text-slate-200 font-sans font-medium">
                       {s.user_request}
                     </td>
                     <td className="py-3 px-4">
@@ -188,20 +181,20 @@ export const SessionsPage: React.FC<SessionsPageProps> = ({ navigate }) => {
                     <td className="py-3 px-4">
                       <StatusBadge status={s.verdict} size="sm" />
                     </td>
-                    <td className="py-3 px-4 text-content-secondary">
+                    <td className="py-3 px-4 text-slate-400">
                       {s.iteration}/{s.max_iterations}
                     </td>
-                    <td className="py-3 px-4 text-content-secondary">
+                    <td className="py-3 px-4 text-slate-400">
                       {Math.round(s.total_tokens / 1000)}k
                     </td>
-                    <td className="py-3 px-4 font-semibold text-content-primary">
+                    <td className="py-3 px-4 font-semibold text-emerald-400">
                       ${s.total_cost_usd.toFixed(4)}
                     </td>
-                    <td className="py-3 px-4 text-content-muted">
+                    <td className="py-3 px-4 text-slate-500">
                       {new Date(s.created_at).toLocaleDateString()}
                     </td>
                     <td className="py-3 px-4 text-right">
-                      <span className="text-accent-primary group-hover:translate-x-1 inline-flex items-center gap-1 transition-transform">
+                      <span className="text-cyan-400 group-hover:translate-x-1 inline-flex items-center gap-1 transition-transform">
                         Detail <ArrowRight className="w-3.5 h-3.5" />
                       </span>
                     </td>
