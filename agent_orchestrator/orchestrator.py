@@ -115,6 +115,25 @@ class TaskOrchestrator:
         from .runtime.approval_gate import PolicyBasedApprovalGate
         self.approval_gate = approval_gate or PolicyBasedApprovalGate()
 
+        # Budget & Real-Time Ledger Tracking Engine (Issue #35)
+        from .cost.budget_tracker import budget_tracker, BudgetSpec, BudgetTracker
+        self.budget_tracker = kwargs.get("budget_tracker") or budget_tracker
+        custom_spec = kwargs.get("budget_spec")
+        if custom_spec is not None:
+            self.budget_spec = custom_spec
+        elif self.cfg:
+            self.budget_spec = BudgetSpec(
+                max_session_cost_usd=float(getattr(self.cfg, "max_session_cost_usd", 0.0) or 0.0),
+                max_cost_usd_per_task=float(getattr(self.cfg, "max_task_cost_usd", 0.0) or getattr(self.cfg, "max_cost_usd_per_task", 0.0) or 0.0),
+                max_tokens_per_task=int(getattr(self.cfg, "max_task_tokens", 0) or getattr(self.cfg, "max_tokens_per_task", 0) or 0),
+                max_session_tokens=int(getattr(self.cfg, "max_session_tokens", 0) or 0),
+            )
+        else:
+            self.budget_spec = BudgetSpec()
+
+        self.budget_tracker.set_spec(self.budget_spec)
+        budget_tracker.set_spec(self.budget_spec)
+
         # Persistence & Checkpoint Managers
         self.state_store = state_store or SQLiteStateStore(workspace_dir=self.workspace.root_dir)
         from .persistence.artifact_store import ArtifactStore
