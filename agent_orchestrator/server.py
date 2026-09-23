@@ -112,15 +112,46 @@ ws_manager = ConnectionManager()
 loop_holder: Dict[str, Optional[asyncio.AbstractEventLoop]] = {"loop": None}
 
 
-def _on_event_bus_event(event_type: str, task_id: Optional[str] = None, agent_name: Optional[str] = None, payload: Optional[Dict[str, Any]] = None):
-    """Bridge EventBus publish to WebSocket clients."""
+def _on_event_bus_event(
+    event_or_type: Any,
+    task_id: Optional[str] = None,
+    agent_name: Optional[str] = None,
+    payload: Optional[Dict[str, Any]] = None,
+    **kwargs: Any,
+):
+    """Bridge EventBus publish to WebSocket clients safely and serialize ExecutionEvents."""
+    if hasattr(event_or_type, "event_type_value"):
+        # ExecutionEvent instance
+        ev_type = event_or_type.event_type_value
+        t_id = event_or_type.task_id or task_id
+        a_name = event_or_type.agent_name or agent_name
+        p = event_or_type.payload or payload or {}
+        s_id = event_or_type.session_id or p.get("session_id")
+        ts = getattr(event_or_type, "timestamp", datetime.now().isoformat())
+    elif isinstance(event_or_type, dict):
+        ev_type = str(event_or_type.get("event_type") or event_or_type.get("event") or "UNKNOWN")
+        t_id = event_or_type.get("task_id") or task_id
+        a_name = event_or_type.get("agent_name") or agent_name
+        p = event_or_type.get("payload") or event_or_type.get("data") or payload or {}
+        s_id = event_or_type.get("session_id") or p.get("session_id")
+        ts = event_or_type.get("timestamp") or datetime.now().isoformat()
+    else:
+        ev_type = str(event_or_type)
+        t_id = task_id
+        a_name = agent_name
+        p = payload or kwargs.get("data") or {}
+        s_id = p.get("session_id") or kwargs.get("session_id")
+        ts = kwargs.get("timestamp") or datetime.now().isoformat()
+
     ev_data = {
-        "event": event_type,
-        "event_type": event_type,
-        "task_id": task_id,
-        "agent_name": agent_name,
-        "payload": payload or {},
-        "timestamp": datetime.now().isoformat(),
+        "event": ev_type,
+        "event_type": ev_type,
+        "session_id": s_id,
+        "task_id": t_id,
+        "agent_name": a_name,
+        "payload": p,
+        "data": p,
+        "timestamp": ts,
     }
     loop = loop_holder.get("loop")
     if loop and loop.is_running():
@@ -512,10 +543,10 @@ async def _run_orchestrator_job(session_id: str, orch: TaskOrchestrator, prompt:
     """Background execution runner for an active TaskOrchestrator."""
     try:
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, orch.execute, prompt)
+        result = await loop.run_in_executor(None, orch.execute, prompt, session_id)
         _on_event_bus_event("WORKFLOW_COMPLETED", payload={"session_id": session_id, "status": "COMPLETED", "result": str(result)[:200]})
     except Exception as e:
-        logger.error(f"Error executing orchestrator session {session_id}: {e}")
+        logger.error(f"Error executing orchestrator session {session_id}: {e}", exc_info=True)
         _on_event_bus_event("WORKFLOW_FAILED", payload={"session_id": session_id, "status": "FAILED", "error": str(e)})
     finally:
         with orchestrator_lock:
@@ -553,8 +584,27 @@ async def launch_task(req: LaunchTaskRequest, background_tasks: BackgroundTasks)
         ws_instance = WorkspaceManager(root_dir=target_ws_dir)
         git_info = _get_git_info(target_ws_dir)
 
-        orch = TaskOrchestrator(workspace=ws_instance, config=cfg)
-        session_id = orch.active_session_id
+        # Pre-assign session ID
+        session_id = f"sess-{int(time.time())}-{uuid.uuid4().hex[:6]}"
+
+        def _orch_on_event(stage: str, msg: str, payload: Optional[Dict[str, Any]] = None):
+            ev_name = f"STAGE_{stage.upper()}" if not stage.startswith("WORKFLOW_") else stage
+            _on_event_bus_event(
+                event_or_type=ev_name,
+                payload={"session_id": session_id, "stage": stage, "message": msg, **(payload or {})},
+            )
+
+        orch = TaskOrchestrator(
+            workspace=ws_instance,
+            config=cfg,
+            state_store=state_store,
+            checkpoint_manager=checkpoint_mgr,
+            on_event_callback=_orch_on_event,
+            event_bus=event_bus,
+            telemetry_engine=telemetry_engine,
+            tracer=tracer,
+        )
+        orch.active_session_id = session_id
 
         # Save initial session state with workspace metadata
         from agent_orchestrator.state import OrchestratorState, TaskStatus
@@ -690,7 +740,24 @@ async def resume_session(session_id: str):
     target_ws = Path(recovered_state.workspace_dir).resolve() if getattr(recovered_state, "workspace_dir", None) else WORKSPACE_ROOT
     ws_instance = WorkspaceManager(root_dir=target_ws)
     cfg = OrchestratorConfig()
-    orch = TaskOrchestrator(workspace=ws_instance, config=cfg)
+
+    def _orch_on_event(stage: str, msg: str, payload: Optional[Dict[str, Any]] = None):
+        ev_name = f"STAGE_{stage.upper()}" if not stage.startswith("WORKFLOW_") else stage
+        _on_event_bus_event(
+            event_or_type=ev_name,
+            payload={"session_id": session_id, "stage": stage, "message": msg, **(payload or {})},
+        )
+
+    orch = TaskOrchestrator(
+        workspace=ws_instance,
+        config=cfg,
+        state_store=state_store,
+        checkpoint_manager=checkpoint_mgr,
+        on_event_callback=_orch_on_event,
+        event_bus=event_bus,
+        telemetry_engine=telemetry_engine,
+        tracer=tracer,
+    )
     orch.active_session_id = session_id
 
     with orchestrator_lock:

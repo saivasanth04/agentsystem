@@ -1588,12 +1588,19 @@ Respond ONLY with the JSON array of tasks.
     # ==========================================
     # RUN & RESUME ENTRYPOINTS
     # ==========================================
+    def execute(self, user_request: str, session_id: Optional[str] = None) -> OrchestratorState:
+        """
+        Executes the LangGraph StateGraph orchestration workflow for the given user request.
+        Alias for run().
+        """
+        return self.run(user_request, session_id=session_id)
+
     def run(self, user_request: str, session_id: Optional[str] = None) -> OrchestratorState:
         """
         Executes the LangGraph StateGraph workflow for the given user request.
         Persists runtime state, DAG progress, and message logs to SQLite.
         """
-        self.active_session_id = session_id or f"sess-{int(time.time())}-{uuid.uuid4().hex[:6]}"
+        self.active_session_id = session_id or getattr(self, "active_session_id", None) or f"sess-{int(time.time())}-{uuid.uuid4().hex[:6]}"
         self.active_trace_id = self.active_session_id
         if hasattr(self, "tracer") and self.tracer:
             self.tracer.start_trace(self.active_trace_id, metadata={"session_id": self.active_session_id, "user_request": user_request})

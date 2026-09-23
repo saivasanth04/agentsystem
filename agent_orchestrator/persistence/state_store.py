@@ -109,6 +109,9 @@ class SQLiteStateStore:
                     total_cost_usd REAL DEFAULT 0.0,
                     total_duration_seconds REAL DEFAULT 0.0,
                     reproducibility_json TEXT,
+                    workspace_dir TEXT,
+                    git_branch TEXT,
+                    git_commit TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -448,8 +451,8 @@ class SQLiteStateStore:
                         architecture_output_json, code_output_json, test_output_json,
                         review_output_json, replan_history_json, current_iteration,
                         max_iterations, total_tokens_json, total_cost_usd,
-                        total_duration_seconds, reproducibility_json, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        total_duration_seconds, reproducibility_json, workspace_dir, git_branch, git_commit, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(session_id) DO UPDATE SET
                         status = excluded.status,
                         verdict = excluded.verdict,
@@ -469,6 +472,9 @@ class SQLiteStateStore:
                         total_cost_usd = excluded.total_cost_usd,
                         total_duration_seconds = excluded.total_duration_seconds,
                         reproducibility_json = excluded.reproducibility_json,
+                        workspace_dir = COALESCE(excluded.workspace_dir, sessions.workspace_dir),
+                        git_branch = COALESCE(excluded.git_branch, sessions.git_branch),
+                        git_commit = COALESCE(excluded.git_commit, sessions.git_commit),
                         updated_at = excluded.updated_at
                     """,
                     (
@@ -492,6 +498,9 @@ class SQLiteStateStore:
                         state.total_cost_usd,
                         state.total_duration_seconds,
                         repro_json,
+                        getattr(state, "workspace_dir", None),
+                        getattr(state, "git_branch", "main"),
+                        getattr(state, "git_commit", ""),
                         state.created_at or now_iso,
                         now_iso,
                     ),
