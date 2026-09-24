@@ -330,25 +330,28 @@ class LLMClient:
                     "raw_arguments": raw_args,
                 })
 
+        ret_message: Dict[str, Any] = {
+            "role": "assistant",
+            "content": msg.content or "",
+        }
+        if getattr(msg, "tool_calls", None):
+            ret_message["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": getattr(tc, "type", "function"),
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": getattr(tc.function, "arguments", "{}") or "{}",
+                    }
+                }
+                for tc in msg.tool_calls
+            ]
+
         return {
             "content": msg.content or "",
             "tool_calls": tool_calls_data,
             "finish_reason": choice.finish_reason,
-            "message": {
-                "role": "assistant",
-                "content": msg.content,
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": tc.type,
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        }
-                    }
-                    for tc in (msg.tool_calls or [])
-                ] if getattr(msg, "tool_calls", None) else None,
-            },
+            "message": ret_message,
         }
 
 

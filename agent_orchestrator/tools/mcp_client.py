@@ -30,13 +30,13 @@ class MCPClientAdapter:
         self.workspace_dir = workspace_dir
         self.manager = mcp_manager or MCPManager(workspace_dir=self.workspace_dir)
         self._agent_mcp_map: Dict[str, List[str]] = {
-            "TASKORCHESTRATOR": ["claude-flow", "mcp-server-sqlite", "mcp-server-memory"],
-            "PLANNER": ["mcp-server-git", "mcp-server-fetch", "mcp-server-filesystem", "mcp-server-memory"],
-            "SPECIFICATION": ["mcp-server-fetch", "brave-search", "mcp-server-filesystem"],
-            "ARCHITECTURE": ["mcp-server-filesystem", "mcp-server-memory"],
-            "CODER": ["mcp-server-filesystem", "mcp-server-git", "mcp-server-memory"],
-            "TESTER": ["docker-mcp", "mcp-server-terminal", "mcp-server-filesystem"],
-            "REVIEWER": ["mcp-server-git", "semgrep-mcp", "mcp-server-filesystem", "mcp-server-memory"],
+            "TASKORCHESTRATOR": ["claude-flow", "claude_flow", "sqlite", "mcp-server-sqlite", "memory", "mcp-server-memory"],
+            "PLANNER": ["git", "mcp-server-git", "fetch", "mcp-server-fetch", "filesystem", "mcp-server-filesystem", "memory", "mcp-server-memory"],
+            "SPECIFICATION": ["fetch", "mcp-server-fetch", "brave-search", "filesystem", "mcp-server-filesystem", "memory", "mcp-server-memory"],
+            "ARCHITECTURE": ["filesystem", "mcp-server-filesystem", "memory", "mcp-server-memory"],
+            "CODER": ["filesystem", "mcp-server-filesystem", "git", "mcp-server-git", "memory", "mcp-server-memory", "terminal", "mcp-server-terminal"],
+            "TESTER": ["docker-mcp", "terminal", "mcp-server-terminal", "filesystem", "mcp-server-filesystem"],
+            "REVIEWER": ["git", "mcp-server-git", "semgrep-mcp", "filesystem", "mcp-server-filesystem", "memory", "mcp-server-memory"],
         }
         self._register_default_mcp_profiles()
 
@@ -110,12 +110,18 @@ class MCPClientAdapter:
     def get_tools_for_agent(self, agent_name: str) -> List[Dict[str, Any]]:
         agent_clean = agent_name.upper().strip()
         allowed_servers = self._agent_mcp_map.get(agent_clean, [])
+        resolved_allowed = set(allowed_servers)
+        if self.manager and hasattr(self.manager, "_resolve_server_name"):
+            for s in allowed_servers:
+                resolved_allowed.add(self.manager._resolve_server_name(s))
+                resolved_allowed.add(s.lower())
+
         schemas = []
         seen = set()
 
         # Check in-memory registered tools
         for name, tool in self._tools.items():
-            if tool.server_name in allowed_servers and name not in seen:
+            if (tool.server_name in resolved_allowed or tool.server_name.lower() in resolved_allowed) and name not in seen:
                 seen.add(name)
                 schemas.append({
                     "type": "function",
@@ -130,7 +136,8 @@ class MCPClientAdapter:
         if self.manager:
             for s_info in self.manager.discover_servers():
                 s_name = s_info["server_name"]
-                if s_name in allowed_servers:
+                s_res = self.manager._resolve_server_name(s_name) if hasattr(self.manager, "_resolve_server_name") else s_name
+                if s_name in resolved_allowed or s_res in resolved_allowed or s_name.lower() in resolved_allowed:
                     for t in self.manager.discover_tools(server_name=s_name):
                         if t.name not in seen:
                             seen.add(t.name)

@@ -34,6 +34,25 @@ from .transport import InMemoryTransport, StdioTransport
 
 logger = logging.getLogger("mcp.manager")
 
+SERVER_ALIASES: Dict[str, str] = {
+    "filesystem": "mcp-server-filesystem",
+    "fs": "mcp-server-filesystem",
+    "mcp_server_filesystem": "mcp-server-filesystem",
+    "git": "mcp-server-git",
+    "mcp_server_git": "mcp-server-git",
+    "terminal": "mcp-server-terminal",
+    "term": "mcp-server-terminal",
+    "mcp_server_terminal": "mcp-server-terminal",
+    "memory": "mcp-server-memory",
+    "cbm": "mcp-server-memory",
+    "mcp_server_memory": "mcp-server-memory",
+    "sqlite": "mcp-server-sqlite",
+    "mcp_server_sqlite": "mcp-server-sqlite",
+    "fetch": "mcp-server-fetch",
+    "mcp_server_fetch": "mcp-server-fetch",
+    "claude_flow": "claude-flow",
+}
+
 
 class MCPManager:
     """
@@ -59,6 +78,41 @@ class MCPManager:
         # Load external configured MCP servers from mcp_servers.json
         self.load_config_file()
 
+    def _resolve_server_name(self, name: Optional[str]) -> str:
+        """Resolves any alias, prefix, or canonical form to the registered server name."""
+        if not name:
+            return ""
+        clean = name.strip()
+        if clean in self._sessions or clean in self._servers or clean in self._server_configs:
+            return clean
+
+        lower = clean.lower()
+        if lower in SERVER_ALIASES:
+            cand = SERVER_ALIASES[lower]
+            if cand in self._sessions or cand in self._servers or cand in self._server_configs:
+                return cand
+
+        for alias, target in SERVER_ALIASES.items():
+            if target == clean and (alias in self._sessions or alias in self._servers):
+                return alias
+            if target.lower() == lower and (alias in self._sessions or alias in self._servers):
+                return alias
+
+        if lower.startswith("mcp-server-"):
+            short = lower[11:]
+            if short in self._sessions or short in self._servers or short in self._server_configs:
+                return short
+        elif lower.startswith("mcp_server_"):
+            short = lower[11:]
+            if short in self._sessions or short in self._servers or short in self._server_configs:
+                return short
+        elif lower.startswith("mcp_"):
+            short = lower[4:]
+            if short in self._sessions or short in self._servers or short in self._server_configs:
+                return short
+
+        return clean
+
     def _init_standard_reference_servers(self) -> None:
         """Instantiate in-process reference servers for immediate out-of-the-box operation."""
         fs_server = FilesystemMCPServer(root_dir=self.workspace_dir)
@@ -73,23 +127,25 @@ class MCPManager:
 
     def get_circuit_breaker(self, server_name: str) -> MCPCircuitBreaker:
         """Retrieve or initialize the circuit breaker for a given MCP server (thread-safe)."""
+        resolved = self._resolve_server_name(server_name)
         with self._lock:
-            if server_name not in self._circuit_breakers:
-                self._circuit_breakers[server_name] = MCPCircuitBreaker(server_name=server_name)
-            return self._circuit_breakers[server_name]
+            if resolved not in self._circuit_breakers:
+                self._circuit_breakers[resolved] = MCPCircuitBreaker(server_name=resolved)
+            return self._circuit_breakers[resolved]
 
     def get_server_health_status(self, server_name: str) -> str:
         """
         Evaluate the operational health of an MCP server.
         Returns 'HEALTHY', 'DEGRADED', or 'UNHEALTHY'.
         """
-        cb = self.get_circuit_breaker(server_name)
+        resolved = self._resolve_server_name(server_name)
+        cb = self.get_circuit_breaker(resolved)
         if cb.state == CircuitState.OPEN:
             return "UNHEALTHY"
 
-        session = self._sessions.get(server_name)
+        session = self._sessions.get(resolved)
         if not session or not session.is_connected:
-            if server_name in self._servers or server_name in self._server_configs:
+            if resolved in self._servers or resolved in self._server_configs:
                 return "DEGRADED"  # Configured but stopped / uninitialized
             return "UNHEALTHY"
 
@@ -185,21 +241,22 @@ class MCPManager:
 
     def start_server(self, name: str) -> MCPClientSession:
         """Explicitly start or restart a registered server."""
-        session = self._sessions.get(name)
+        resolved = self._resolve_server_name(name)
+        session = self._sessions.get(resolved)
         if session and session.is_connected:
-            self.get_circuit_breaker(name).reset()
+            self.get_circuit_breaker(resolved).reset()
             return session
 
         # If in-memory server registered
-        if name in self._servers:
-            server = self._servers[name]
+        if resolved in self._servers:
+            server = self._servers[resolved]
             return self.register_in_memory_server(server)
 
         # If stdio config exists
-        if name in self._server_configs:
-            cfg = self._server_configs[name]
+        if resolved in self._server_configs:
+            cfg = self._server_configs[resolved]
             return self.register_stdio_server(
-                name=name,
+                name=resolved,
                 command=cfg["command"],
                 args=cfg.get("args"),
                 env=cfg.get("env"),
@@ -210,17 +267,18 @@ class MCPManager:
 
     def stop_server(self, name: str) -> bool:
         """Gracefully stop a registered server session and purge its tools from active cache."""
-        session = self._sessions.get(name)
+        resolved = self._resolve_server_name(name)
+        session = self._sessions.get(resolved)
         if not session:
             return False
 
         try:
             session.close()
         except Exception as e:
-            logger.warning(f"Error while stopping MCP server '{name}': {e}")
+            logger.warning(f"Error while stopping MCP server '{resolved}': {e}")
 
         # Purge tool cache for this server
-        keys_to_remove = [k for k, s_name in self._tool_to_server.items() if s_name == name]
+        keys_to_remove = [k for k, s_name in self._tool_to_server.items() if s_name == resolved or self._resolve_server_name(s_name) == resolved]
         for k in keys_to_remove:
             self._tool_cache.pop(k, None)
             self._tool_to_server.pop(k, None)
@@ -229,33 +287,37 @@ class MCPManager:
 
     def restart_server(self, name: str) -> MCPClientSession:
         """Stop and restart a registered MCP server."""
-        self.stop_server(name)
-        sess = self.start_server(name)
-        self.get_circuit_breaker(name).reset()
+        resolved = self._resolve_server_name(name)
+        self.stop_server(resolved)
+        sess = self.start_server(resolved)
+        self.get_circuit_breaker(resolved).reset()
         return sess
 
     def get_server_state(self, name: str) -> MCPServerState:
         """Retrieve current lifecycle state for an MCP server."""
-        session = self._sessions.get(name)
+        resolved = self._resolve_server_name(name)
+        session = self._sessions.get(resolved)
         if not session:
             return MCPServerState.STOPPED
         return session.state
 
     def get_server_capabilities(self, name: str) -> Optional[MCPServerCapabilities]:
         """Retrieve negotiated server capabilities for an MCP server."""
-        session = self._sessions.get(name)
+        resolved = self._resolve_server_name(name)
+        session = self._sessions.get(resolved)
         if not session or not session.is_connected:
             return None
         return session.capabilities
 
     def unregister_server(self, name: str) -> bool:
         """Fully unregister and terminate an MCP server."""
-        self.stop_server(name)
-        had_server = (name in self._sessions) or (name in self._servers) or (name in self._server_configs)
-        self._sessions.pop(name, None)
-        self._servers.pop(name, None)
-        self._server_configs.pop(name, None)
-        self._circuit_breakers.pop(name, None)
+        resolved = self._resolve_server_name(name)
+        self.stop_server(resolved)
+        had_server = (resolved in self._sessions) or (resolved in self._servers) or (resolved in self._server_configs)
+        self._sessions.pop(resolved, None)
+        self._servers.pop(resolved, None)
+        self._server_configs.pop(resolved, None)
+        self._circuit_breakers.pop(resolved, None)
         return had_server
 
     def reconnect(
@@ -266,36 +328,38 @@ class MCPManager:
         backoff_factor: float = 1.5,
     ) -> MCPClientSession:
         """Attempt reconnection to a disconnected or crashed MCP server with exponential backoff."""
+        resolved = self._resolve_server_name(server_name)
         delay = initial_delay
         last_error = None
 
         for attempt in range(1, max_retries + 1):
-            logger.info(f"Reconnection attempt {attempt}/{max_retries} for MCP server '{server_name}'...")
+            logger.info(f"Reconnection attempt {attempt}/{max_retries} for MCP server '{resolved}'...")
             try:
-                session = self.restart_server(server_name)
+                session = self.restart_server(resolved)
                 if session.is_connected:
-                    logger.info(f"Successfully reconnected to MCP server '{server_name}'.")
-                    self.get_circuit_breaker(server_name).record_success()
+                    logger.info(f"Successfully reconnected to MCP server '{resolved}'.")
+                    self.get_circuit_breaker(resolved).record_success()
                     return session
             except Exception as e:
                 last_error = e
-                logger.warning(f"Reconnection attempt {attempt} for '{server_name}' failed: {e}")
+                logger.warning(f"Reconnection attempt {attempt} for '{resolved}' failed: {e}")
 
             if attempt < max_retries:
                 time.sleep(delay)
                 delay *= backoff_factor
 
-        self.get_circuit_breaker(server_name).record_failure(last_error)
+        self.get_circuit_breaker(resolved).record_failure(last_error)
         raise MCPConnectionError(
-            f"Failed to reconnect to '{server_name}' after {max_retries} retries: {last_error}"
+            f"Failed to reconnect to '{resolved}' after {max_retries} retries: {last_error}"
         )
 
     def ensure_server_running(self, server_name: str) -> MCPClientSession:
         """Ensure that the named server is started and ready; start it lazily if not."""
-        session = self._sessions.get(server_name)
+        resolved = self._resolve_server_name(server_name)
+        session = self._sessions.get(resolved)
         if session and session.is_connected:
             return session
-        return self.start_server(server_name)
+        return self.start_server(resolved)
 
     def health_check(
         self, server_name: Optional[str] = None
@@ -343,26 +407,41 @@ class MCPManager:
         return reports
 
     def _refresh_tools_for_server(self, server_name: str) -> None:
-        """Fetch and index all tools from a registered server (supports pagination)."""
+        """Fetch and index all tools from a registered server (supports pagination and alias indexing)."""
         session = self._sessions.get(server_name)
         if not session or not session.is_connected:
             return
 
         try:
             # Purge existing keys for this server first so removed tools disappear cleanly
-            old_keys = [k for k, s_name in self._tool_to_server.items() if s_name == server_name]
+            old_keys = [
+                k for k, s_name in self._tool_to_server.items()
+                if s_name == server_name or self._resolve_server_name(s_name) == self._resolve_server_name(server_name)
+            ]
             for k in old_keys:
                 self._tool_cache.pop(k, None)
                 self._tool_to_server.pop(k, None)
 
             tools = session.list_tools()
+            short_name = server_name[11:] if server_name.startswith("mcp-server-") else (server_name[4:] if server_name.startswith("mcp_") else server_name)
             for t in tools:
-                # Key by full qualified name and bare name
-                full_name = f"{server_name}__{t.name}"
-                self._tool_cache[full_name] = t
-                self._tool_cache[t.name] = t
-                self._tool_to_server[full_name] = server_name
-                self._tool_to_server[t.name] = server_name
+                names = {
+                    f"{server_name}__{t.name}",
+                    f"{short_name}__{t.name}",
+                    t.name,
+                    f"mcp_{server_name}_{t.name}",
+                    f"mcp_{short_name}_{t.name}",
+                    f"mcp_{t.name}",
+                }
+                for alias, target in SERVER_ALIASES.items():
+                    if target == server_name or target == short_name:
+                        names.add(f"{alias}__{t.name}")
+                        names.add(f"mcp_{alias}_{t.name}")
+
+                for n in names:
+                    self._tool_cache[n] = t
+                    self._tool_to_server[n] = server_name
+
             logger.info(f"Refreshed {len(tools)} tools for MCP server '{server_name}'.")
         except Exception as e:
             logger.warning(f"Failed refreshing tools for MCP server '{server_name}': {e}")
@@ -390,7 +469,8 @@ class MCPManager:
     def discover_tools(self, server_name: Optional[str] = None) -> List[ToolDefinition]:
         """Discover all exposed tools across servers or for a specific server."""
         if server_name:
-            session = self._sessions.get(server_name)
+            resolved = self._resolve_server_name(server_name)
+            session = self._sessions.get(resolved)
             if not session or not session.is_connected:
                 return []
             return session.list_tools()
@@ -425,7 +505,7 @@ class MCPManager:
         """
         server_name = self._tool_to_server.get(tool_name)
         if not server_name and "__" in tool_name:
-            cand_server = tool_name.split("__")[0]
+            cand_server = self._resolve_server_name(tool_name.split("__")[0])
             if (
                 cand_server in self._sessions
                 or cand_server in self._server_configs
@@ -433,19 +513,29 @@ class MCPManager:
             ):
                 server_name = cand_server
 
-        if not server_name or (
-            server_name not in self._sessions
-            and server_name not in self._server_configs
-            and server_name not in self._servers
-        ):
-            # Check if prefixed with mcp_<server_name>_
+        if not server_name:
+            # Check if prefixed with mcp_<server_name>_ or aliases
             for s_name in list(self._sessions.keys()) + list(self._servers.keys()) + list(self._server_configs.keys()):
-                prefix = f"mcp_{s_name}_"
-                if tool_name.startswith(prefix):
-                    bare_tool = tool_name[len(prefix):]
+                s_resolved = self._resolve_server_name(s_name)
+                prefixes = [
+                    f"mcp_{s_name}_",
+                    f"mcp_{s_resolved}_",
+                ]
+                if s_name.startswith("mcp-server-"):
+                    prefixes.append(f"mcp_{s_name[11:]}_")
+                for prefix in prefixes:
+                    if tool_name.startswith(prefix):
+                        bare_tool = tool_name[len(prefix):]
+                        return self.call_tool(bare_tool, arguments, timeout)
+
+            if tool_name.startswith("mcp_"):
+                bare_tool = tool_name[4:]
+                if bare_tool in self._tool_to_server:
                     return self.call_tool(bare_tool, arguments, timeout)
 
             return ToolCallResult.failure(f"Tool '{tool_name}' not found on any active MCP server.")
+
+        server_name = self._resolve_server_name(server_name)
 
         # Circuit breaker check: Fail-fast if server is UNHEALTHY / circuit OPEN
         cb = self.get_circuit_breaker(server_name)
@@ -475,6 +565,8 @@ class MCPManager:
             bare_tool_name = self._tool_cache[tool_name].name
         else:
             bare_tool_name = tool_name.split("__")[-1]
+            if bare_tool_name.startswith("mcp_"):
+                bare_tool_name = bare_tool_name[4:]
 
         try:
             res = session.call_tool(bare_tool_name, arguments or {}, timeout=timeout)

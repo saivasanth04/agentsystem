@@ -180,16 +180,38 @@ class BaseMCPServer:
         handler = tool["handler"]
 
         try:
+            call_args = dict(arguments) if isinstance(arguments, dict) else {}
+            # Alias normalizations
+            if "filepath" in call_args and "path" not in call_args:
+                call_args["path"] = call_args["filepath"]
+            elif "file_path" in call_args and "path" not in call_args:
+                call_args["path"] = call_args["file_path"]
+            elif "path" in call_args and "filepath" not in call_args:
+                call_args["filepath"] = call_args["path"]
+
+            if "text" in call_args and "content" not in call_args:
+                call_args["content"] = call_args["text"]
+            elif "content" in call_args and "text" not in call_args:
+                call_args["text"] = call_args["content"]
+
+            if "cmd" in call_args and "command" not in call_args:
+                call_args["command"] = call_args["cmd"]
+
+            if "symbol" in call_args and "symbol_name" not in call_args:
+                call_args["symbol_name"] = call_args["symbol"]
+            elif "query" in call_args and "symbol_name" not in call_args:
+                call_args["symbol_name"] = call_args["query"]
+
             sig = inspect.signature(handler)
             param_names = list(sig.parameters.keys())
             if len(param_names) == 1 and (param_names[0] in ("args", "arguments", "payload") or next(iter(sig.parameters.values())).kind == inspect.Parameter.VAR_KEYWORD):
-                res = handler(arguments)
+                res = handler(call_args)
             else:
                 has_varkw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
                 if has_varkw:
-                    res = handler(**arguments)
+                    res = handler(**call_args)
                 else:
-                    filtered_args = {k: v for k, v in arguments.items() if k in sig.parameters}
+                    filtered_args = {k: v for k, v in call_args.items() if k in sig.parameters}
                     res = handler(**filtered_args)
 
             if isinstance(res, ToolCallResult):

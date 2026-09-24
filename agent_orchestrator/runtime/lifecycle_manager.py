@@ -46,6 +46,7 @@ class AgentLifecycleManager:
         self.tool_registry = tool_registry
         self.skill_registry = skill_registry
         self.mcp_client = mcp_client
+        self.message_bus = message_bus
         from .approval_gate import PolicyBasedApprovalGate
         self.approval_gate = approval_gate or PolicyBasedApprovalGate()
         self.on_event = on_event_callback or (lambda stage, msg, payload=None: None)
@@ -68,7 +69,7 @@ class AgentLifecycleManager:
         """
         Dynamically instantiates and registers a new agent instance in the runtime.
         """
-        agent_id = f"agent-{role.lower()}-{uuid.uuid4().hex[:6]}"
+        agent_id = kwargs.get("agent_id") or f"agent-{role.lower()}-{uuid.uuid4().hex[:6]}"
         manifest = None
         if hasattr(self.agent_registry, "get"):
             manifest = self.agent_registry.get(role)
@@ -83,6 +84,7 @@ class AgentLifecycleManager:
                 mcp_client=self.mcp_client,
                 message_bus=self.message_bus,
                 approval_gate=self.approval_gate,
+                **kwargs,
             )
         elif agent_class:
             agent = agent_class(
@@ -95,6 +97,7 @@ class AgentLifecycleManager:
                 mcp_client=self.mcp_client,
                 message_bus=self.message_bus,
                 approval_gate=self.approval_gate,
+                **kwargs,
             )
         else:
             # Fallback to DynamicAgent or BaseAgent
@@ -113,6 +116,7 @@ class AgentLifecycleManager:
                     mcp_client=self.mcp_client,
                     message_bus=self.message_bus,
                     approval_gate=self.approval_gate,
+                    **kwargs,
                 )
             except Exception:
                 agent = BaseAgent(
@@ -125,6 +129,7 @@ class AgentLifecycleManager:
                     mcp_client=self.mcp_client,
                     message_bus=self.message_bus,
                     approval_gate=self.approval_gate,
+                    **kwargs,
                 )
 
         # Attach lifecycle attributes
@@ -326,7 +331,10 @@ class AgentLifecycleManager:
 
         target = self.get_agent(to_agent_id)
         if target and hasattr(target, "execute"):
-            target_res = target.execute(state=context or {})
+            target_res = target.execute(
+                state=context or {},
+                task_info={"objective": subtask_objective, "context": context or {}},
+            )
             return {"status": "SUCCESS", "output": str(target_res), "agent_id": to_agent_id}
 
         return {

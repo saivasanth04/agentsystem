@@ -17,9 +17,9 @@ from .fault_localization import EmpiricalFaultLocalizer, AdversarialAttributionA
 class DiagnosticReport:
     root_cause_summary: str
     failure_type: str  # SYNTAX_ERROR | IMPORT_ERROR | ASSERTION_FAILURE | RUNTIME_CRASH | SPEC_MISMATCH | INFRASTRUCTURE_ERROR | CONTRACT_MISMATCH
-    affected_files: List[str]
-    suggested_remediation: List[str]
-    target_agent: str
+    affected_files: List[str] = field(default_factory=list)
+    suggested_remediation: List[str] = field(default_factory=list)
+    target_agent: str = "CODER"
     should_rollback: bool = False
     rollback_target: Optional[str] = None
     regression_detected: bool = False

@@ -34,6 +34,7 @@ class BaseAgent:
         self.tool_registry = tool_registry or BuiltinToolRegistry(self.workspace)
         self.skill_registry = skill_registry or SkillManager()
         self.mcp_client = mcp_client or MCPClientAdapter(workspace_dir=self.workspace.root_dir)
+        self.message_bus = message_bus
         from ..runtime.approval_gate import PolicyBasedApprovalGate
         self.approval_gate = approval_gate or PolicyBasedApprovalGate()
         self.extra_kwargs = kwargs
@@ -205,4 +206,137 @@ class BaseAgent:
                 },
             )
         return {"status": "HANDOFF_COMPLETED", "target": target_agent, "reason": reason}
+
+    def send_agent_message(
+        self,
+        recipient: str,
+        content: str,
+        message_type: str = "TASK_RESULT",
+        topic: str = "general",
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Sends a structured message to another agent or broadcast channel."""
+        if hasattr(self.tool_registry, "call_tool"):
+            res = self.tool_registry.call_tool(
+                "send_agent_message",
+                {
+                    "recipient": recipient,
+                    "content": content,
+                    "message_type": message_type,
+                    "topic": topic,
+                    "payload": payload or {},
+                },
+            )
+            if isinstance(res, dict) and "status" in res:
+                return res
+        if self.message_bus:
+            from ..runtime.messaging import StructuredMessage
+            msg = StructuredMessage(
+                sender=self.name,
+                recipient=recipient,
+                message_type=message_type,
+                content=content,
+                topic=topic,
+                payload=payload or {},
+            )
+            if recipient in ["*", "all", "broadcast"]:
+                sent = self.message_bus.publish(topic, msg)
+            else:
+                sent = self.message_bus.send_direct(msg)
+            return {"status": "SENT", "message": sent.to_dict()}
+        return {"status": "NO_MESSAGE_BUS", "sender": self.name, "recipient": recipient, "content": content}
+
+    def query_agent(
+        self,
+        target_agent: str,
+        query: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Synchronously queries a peer agent and retrieves their response."""
+        if hasattr(self.tool_registry, "call_tool"):
+            res = self.tool_registry.call_tool(
+                "query_agent",
+                {
+                    "target_agent": target_agent,
+                    "query": query,
+                    "context": context or {},
+                },
+            )
+            if isinstance(res, dict) and "status" in res:
+                return res
+        if self.message_bus:
+            resp = self.message_bus.query_agent_sync(
+                sender=self.name,
+                target_agent=target_agent,
+                query=query,
+                context=context or {},
+                llm=self.llm,
+                workspace=self.workspace,
+            )
+            return {
+                "status": "ANSWERED",
+                "from_agent": resp.sender,
+                "response": resp.content,
+                "structured_data": resp.payload,
+            }
+        return {"status": "NO_MESSAGE_BUS", "sender": self.name, "target": target_agent, "query": query}
+
+    def publish_finding(
+        self,
+        topic: str,
+        title: str,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Publishes an engineering finding or boundary observation to a topic."""
+        if hasattr(self.tool_registry, "call_tool"):
+            res = self.tool_registry.call_tool(
+                "publish_finding",
+                {
+                    "topic": topic,
+                    "title": title,
+                    "details": details or {},
+                },
+            )
+            if isinstance(res, dict) and "status" in res:
+                return res
+        if self.message_bus:
+            from ..runtime.messaging import StructuredMessage, MessageType
+            msg = StructuredMessage(
+                sender=self.name,
+                recipient="*",
+                message_type=MessageType.FINDING,
+                content=title,
+                topic=topic,
+                payload=details or {},
+            )
+            sent = self.message_bus.publish(topic, msg)
+            return {"status": "PUBLISHED", "topic": topic, "message_id": sent.message_id}
+        return {"status": "NO_MESSAGE_BUS", "topic": topic, "title": title}
+
+    def read_inbox(
+        self,
+        recipient: Optional[str] = None,
+        clear: bool = False,
+    ) -> Dict[str, Any]:
+        """Reads incoming messages for this agent or specified recipient."""
+        target = recipient or self.name
+        if hasattr(self.tool_registry, "call_tool"):
+            res = self.tool_registry.call_tool(
+                "read_inbox",
+                {
+                    "recipient": target,
+                    "clear": clear,
+                },
+            )
+            if isinstance(res, dict) and "messages" in res:
+                return res
+        if self.message_bus:
+            msgs = self.message_bus.get_inbox(target, clear=clear)
+            return {
+                "recipient": target,
+                "count": len(msgs),
+                "messages": [m.to_dict() for m in msgs],
+            }
+        return {"recipient": target, "count": 0, "messages": []}
+
 

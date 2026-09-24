@@ -7,7 +7,8 @@ import {
   Search,
   Download,
   ArrowRight,
-  RefreshCw
+  RefreshCw,
+  Trash2
 } from 'lucide-react';
 
 interface SessionsPageProps {
@@ -17,6 +18,7 @@ interface SessionsPageProps {
 export const SessionsPage: React.FC<SessionsPageProps> = ({ navigate }) => {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [verdictFilter, setVerdictFilter] = useState('ALL');
@@ -32,6 +34,23 @@ export const SessionsPage: React.FC<SessionsPageProps> = ({ navigate }) => {
       setLoading(false);
     }
   };
+
+  const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`Are you sure you want to delete session "${sessionId}" and all associated artifacts? This action cannot be undone.`)) {
+      return;
+    }
+    setDeletingId(sessionId);
+    try {
+      await orchestratorApi.deleteSession(sessionId);
+      setSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
+    } catch (err: any) {
+      alert(`Failed to delete session: ${err.message || err}`);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
 
   useEffect(() => {
     loadSessions();
@@ -194,10 +213,21 @@ export const SessionsPage: React.FC<SessionsPageProps> = ({ navigate }) => {
                       {new Date(s.created_at).toLocaleDateString()}
                     </td>
                     <td className="py-3 px-4 text-right">
-                      <span className="text-cyan-400 group-hover:translate-x-1 inline-flex items-center gap-1 transition-transform">
-                        Detail <ArrowRight className="w-3.5 h-3.5" />
-                      </span>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={(e) => handleDeleteSession(s.session_id, e)}
+                          disabled={deletingId === s.session_id}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors"
+                          title="Delete session"
+                        >
+                          <Trash2 className={`w-3.5 h-3.5 ${deletingId === s.session_id ? 'animate-spin' : ''}`} />
+                        </button>
+                        <span className="text-cyan-400 group-hover:translate-x-0.5 inline-flex items-center gap-1 transition-transform">
+                          Detail <ArrowRight className="w-3.5 h-3.5" />
+                        </span>
+                      </div>
                     </td>
+
                   </tr>
                 ))
               )}

@@ -35,8 +35,11 @@ import {
   Check,
   Play,
   RefreshCw,
-  FolderOpen
+  FolderOpen,
+  Trash2,
+  XCircle
 } from 'lucide-react';
+
 
 interface SessionDetailPageProps {
   sessionId: string;
@@ -107,6 +110,30 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
     }
   };
 
+  const handleCancel = async () => {
+    if (!confirm(`Are you sure you want to cancel the active execution of session "${sessionId}"?`)) {
+      return;
+    }
+    try {
+      await orchestratorApi.cancelSession(sessionId, 'Operator cancelled from session detail');
+      loadAllSessionData();
+    } catch (err: any) {
+      alert(`Cancel failed: ${err.message || err}`);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm(`Permanently delete session "${sessionId}" and all associated artifacts and database records? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      await orchestratorApi.deleteSession(sessionId);
+      navigate('/sessions');
+    } catch (err: any) {
+      alert(`Delete failed: ${err.message || err}`);
+    }
+  };
+
   // Determine session target workspace path
   const sessionWorkspacePath = detail?.workspace_path || detail?.reproducibility?.workspace_path || activeWorkspace?.path;
 
@@ -144,6 +171,8 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
       </div>
     );
   }
+
+  const isRunning = detail.status === 'IN_PROGRESS' || detail.status === 'RUNNING' || detail.status === 'PENDING';
 
   return (
     <div className="max-w-7xl mx-auto space-y-5 pb-12">
@@ -192,6 +221,17 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
             Live DAG Theater
           </button>
 
+          {isRunning && (
+            <button
+              onClick={handleCancel}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-950/60 hover:bg-amber-900/60 border border-amber-500/40 text-amber-300 text-xs font-mono font-semibold transition-colors"
+              title="Cancel running orchestration"
+            >
+              <XCircle className="w-3.5 h-3.5 text-amber-400" />
+              <span>Cancel Run</span>
+            </button>
+          )}
+
           {(detail.status === 'STOPPED' || detail.status === 'FAILED') && (
             <button
               onClick={handleResume}
@@ -201,8 +241,18 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
               Resume Session
             </button>
           )}
+
+          <button
+            onClick={handleDelete}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/30 text-rose-300 text-xs font-mono font-semibold transition-colors"
+            title="Delete session permanently"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+            <span>Delete</span>
+          </button>
         </div>
       </div>
+
 
       {/* Navigation Tabs */}
       <div className="flex items-center gap-1.5 border-b border-slate-800 overflow-x-auto pb-1">
@@ -255,19 +305,19 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
             <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl shadow-sm">
               <span className="text-[10px] font-mono text-slate-400 block mb-1">DURATION</span>
               <span className="text-xl font-bold font-mono text-slate-100">
-                {Math.round(detail.duration_seconds)}s
+                {Math.round(detail.duration_seconds || 0)}s
               </span>
             </div>
             <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl shadow-sm">
               <span className="text-[10px] font-mono text-slate-400 block mb-1">TOTAL COST</span>
               <span className="text-xl font-bold font-mono text-emerald-400">
-                ${detail.total_cost_usd.toFixed(4)}
+                ${(detail.total_cost_usd || 0).toFixed(4)}
               </span>
             </div>
             <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl shadow-sm">
               <span className="text-[10px] font-mono text-slate-400 block mb-1">TOKENS</span>
               <span className="text-xl font-bold font-mono text-cyan-400">
-                {Math.round(detail.total_tokens / 1000)}k
+                {Math.round((detail.total_tokens || 0) / 1000)}k
               </span>
             </div>
             <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl shadow-sm">

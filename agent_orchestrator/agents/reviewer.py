@@ -2,14 +2,25 @@
 Reviewer Agent: Performs code review, security audits (semgrep/git diff), and root-cause failure analysis.
 """
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from .base import BaseAgent
 from ..state import OrchestratorState, ReviewVerdict
 from ..runtime.diagnostics import FailureDiagnostician
 
 
 class ReviewerAgent(BaseAgent):
-    def __init__(self, model: str = None, llm=None, workspace=None, tool_registry=None, skill_registry=None, mcp_client=None):
+    def __init__(
+        self,
+        model: str = None,
+        llm=None,
+        workspace=None,
+        tool_registry=None,
+        skill_registry=None,
+        mcp_client=None,
+        message_bus=None,
+        approval_gate=None,
+        **kwargs: Any,
+    ):
         super().__init__(
             name="REVIEWER",
             role_description="Responsible for code-review, static security audit, verifying test results against acceptance criteria, and root-cause failure analysis.",
@@ -19,26 +30,27 @@ class ReviewerAgent(BaseAgent):
             tool_registry=tool_registry,
             skill_registry=skill_registry,
             mcp_client=mcp_client,
+            message_bus=message_bus,
+            approval_gate=approval_gate,
+            **kwargs,
         )
         self.diagnostician = FailureDiagnostician(self.llm)
 
     def review(self, state: Any, **kwargs) -> Dict[str, Any]:
         """Convenience evaluation method supporting OrchestratorState or dictionary state."""
-        if isinstance(state, dict):
-            req = state.get("user_request") or "Review request"
-            state_obj = OrchestratorState(user_request=req)
-            for k, v in state.items():
-                if hasattr(state_obj, k):
-                    setattr(state_obj, k, v)
-            if "coder_output" in state and not state_obj.code_output:
-                state_obj.code_output = state["coder_output"]
-            if "workspace_dir" in state and not self.workspace:
-                from ..tools.workspace import WorkspaceManager
-                self.workspace = WorkspaceManager(state["workspace_dir"])
-            return self.execute(state_obj, **kwargs)
         return self.execute(state, **kwargs)
 
-    def execute(self, state: OrchestratorState, active_skills: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
+    def execute(self, state: Union[OrchestratorState, Dict[str, Any]], active_skills: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
+        if isinstance(state, dict) or state is None:
+            dict_state = state or {}
+            req = dict_state.get("user_request") or dict_state.get("goal") or "Review code changes"
+            state_obj = OrchestratorState(user_request=req)
+            for k, v in dict_state.items():
+                if hasattr(state_obj, k):
+                    setattr(state_obj, k, v)
+            if "coder_output" in dict_state and not state_obj.code_output:
+                state_obj.code_output = dict_state["coder_output"]
+            state = state_obj
         task_info = kwargs.get("task_info") or {}
         test_info = state.test_output or {}
         code_info = state.code_output or {}
@@ -273,7 +285,8 @@ class ReviewerAgent(BaseAgent):
 
         prompt = assembler.assemble(sections)
         system_prompt = self.build_system_prompt(active_skills=active_skills)
-        reviewer_tools = [t.name for t in self.tool_registry.get_tools_for_agent(self.name)]
+        raw_tools = self.tool_registry.get_tools_for_agent(self.name) if hasattr(self.tool_registry, "get_tools_for_agent") else []
+        reviewer_tools = [getattr(t, "name", str(t)) for t in raw_tools]
 
         effective_model = kwargs.get("model") or self.model
         loop_result = self.react_loop.run(
@@ -283,6 +296,7 @@ class ReviewerAgent(BaseAgent):
             available_tools=reviewer_tools,
             agent_name=self.name,
             temperature=0.1,
+            **{k: v for k, v in kwargs.items() if k not in ("model", "active_skills", "temperature")},
         )
 
         final_out = loop_result.get("final_output", {})

@@ -207,11 +207,34 @@ class ToolRegistry:
         return False
 
     def get(self, name: str) -> Optional[ToolEntry]:
-        """Looks up a tool by exact name or registered alias."""
+        """Looks up a tool by exact name, registered alias, or stripped prefix."""
+        if not name:
+            return None
         norm_key = name.lower().strip()
         if norm_key in self._aliases:
             norm_key = self._aliases[norm_key]
-        return self._tools.get(norm_key)
+        if norm_key in self._tools:
+            return self._tools[norm_key]
+
+        # Strip prefixes (e.g. mcp_, builtin__, native_, <server>__)
+        bare = norm_key
+        if "__" in bare:
+            bare = bare.split("__")[-1]
+        prefixes = ("mcp_", "builtin_", "native_", "mcp-server-filesystem_", "mcp-server-git_", "mcp-server-terminal_", "mcp-server-memory_", "filesystem_", "git_", "terminal_", "memory_")
+        changed = True
+        while changed:
+            changed = False
+            if bare in self._tools or bare in self._aliases:
+                break
+            for pfx in prefixes:
+                if bare.startswith(pfx) and len(bare) > len(pfx) and bare not in self._tools and bare not in self._aliases:
+                    bare = bare[len(pfx):]
+                    changed = True
+                    break
+
+        if bare in self._aliases:
+            bare = self._aliases[bare]
+        return self._tools.get(bare)
 
     def list_tools(self, category: Optional[str] = None) -> List[ToolEntry]:
         """Returns all registered tool entries, optionally filtered by category."""
@@ -378,11 +401,154 @@ class ToolRegistry:
         )
 
     @staticmethod
+    def normalize_arguments(tool_name: str, args: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Normalizes parameter aliases across all registered tools to ensure robust LLM tool execution.
+        """
+        if not isinstance(args, dict):
+            return {}
+        call_args = dict(args)
+        clean = (tool_name or "").lower().strip()
+        bare = clean.split("__")[-1]
+        if bare.startswith("mcp_"):
+            bare = bare[4:]
+
+        # Filepath aliasing
+        if "filepath" not in call_args:
+            for alt in ("file_path", "path", "rel_path", "filename", "file"):
+                if alt in call_args:
+                    call_args["filepath"] = call_args.pop(alt)
+                    break
+
+        # Content aliasing
+        if "content" not in call_args:
+            for alt in ("text", "data", "body", "new_content"):
+                if alt in call_args:
+                    call_args["content"] = call_args.pop(alt)
+                    break
+
+        # Tool-specific normalizations
+        if bare in ("replace_file_content", "edit_file"):
+            if "target_content" not in call_args:
+                for alt in ("target", "old_content", "find", "search"):
+                    if alt in call_args:
+                        call_args["target_content"] = call_args.pop(alt)
+                        break
+            if "replacement_content" not in call_args:
+                for alt in ("replacement", "new_content", "replace"):
+                    if alt in call_args:
+                        call_args["replacement_content"] = call_args.pop(alt)
+                        break
+
+        elif bare in ("apply_diff_blocks", "diff_blocks"):
+            if "diff_blocks" not in call_args:
+                for alt in ("diff", "patch", "blocks"):
+                    if alt in call_args:
+                        call_args["diff_blocks"] = call_args.pop(alt)
+                        break
+
+        elif bare in ("rename_file",):
+            if "old_filepath" not in call_args:
+                for alt in ("old_path", "source", "src", "from_path"):
+                    if alt in call_args:
+                        call_args["old_filepath"] = call_args.pop(alt)
+                        break
+            if "new_filepath" not in call_args:
+                for alt in ("new_path", "target", "dest", "to_path"):
+                    if alt in call_args:
+                        call_args["new_filepath"] = call_args.pop(alt)
+                        break
+
+        elif bare in ("move_file",):
+            if "source_filepath" not in call_args:
+                for alt in ("source_path", "source", "src", "filepath"):
+                    if alt in call_args:
+                        call_args["source_filepath"] = call_args.pop(alt)
+                        break
+            if "target_dir" not in call_args:
+                for alt in ("target_directory", "destination", "dest", "dir", "directory"):
+                    if alt in call_args:
+                        call_args["target_dir"] = call_args.pop(alt)
+                        break
+
+        elif bare in ("apply_patch",):
+            if "patch_content" not in call_args:
+                for alt in ("patch", "diff"):
+                    if alt in call_args:
+                        call_args["patch_content"] = call_args.pop(alt)
+                        break
+
+        elif bare in ("list_directory", "list_files"):
+            if "path" not in call_args:
+                for alt in ("filepath", "file_path", "dir", "directory", "folder", "rel_path"):
+                    if alt in call_args:
+                        call_args["path"] = call_args.pop(alt)
+                        break
+
+        elif bare in ("terminal_execute", "run_command", "bash"):
+            if "command" not in call_args:
+                for alt in ("cmd", "exec", "script"):
+                    if alt in call_args:
+                        call_args["command"] = call_args.pop(alt)
+                        break
+
+        elif bare in ("find_symbol", "find_references", "get_symbol_neighbors"):
+            if "symbol_name" not in call_args:
+                for alt in ("symbol", "query", "name"):
+                    if alt in call_args:
+                        call_args["symbol_name"] = call_args.pop(alt)
+                        break
+
+        elif bare in ("get_dependencies", "get_call_graph", "get_impact_radius"):
+            if "target" not in call_args:
+                for alt in ("symbol_name", "symbol", "filepath", "path", "query"):
+                    if alt in call_args:
+                        call_args["target"] = call_args.pop(alt)
+                        break
+
+        elif bare in ("get_architecture_slice",):
+            if "target_file" not in call_args:
+                for alt in ("filepath", "file_path", "path", "file"):
+                    if alt in call_args:
+                        call_args["target_file"] = call_args.pop(alt)
+                        break
+
+        elif bare in ("regex_grep", "grep_search"):
+            if "pattern" not in call_args:
+                for alt in ("query", "regex", "search"):
+                    if alt in call_args:
+                        call_args["pattern"] = call_args.pop(alt)
+                        break
+
+        elif bare in ("search_skills", "query_specification", "query_architecture", "query_codebase_graph"):
+            if "query" not in call_args:
+                for alt in ("q", "search", "keyword", "prompt"):
+                    if alt in call_args:
+                        call_args["query"] = call_args.pop(alt)
+                        break
+
+        elif bare in ("load_skill", "read_skill_reference", "execute_skill_script"):
+            if "skill_name" not in call_args:
+                for alt in ("name", "skill"):
+                    if alt in call_args:
+                        call_args["skill_name"] = call_args.pop(alt)
+                        break
+
+        elif bare in ("complete_task",):
+            if "summary" not in call_args:
+                for alt in ("result", "message", "output", "deliverables_summary"):
+                    if alt in call_args:
+                        call_args["summary"] = str(call_args.pop(alt))
+                        break
+
+        return call_args
+
+    @staticmethod
     def _prune_and_coerce_args(entry: ToolEntry, args: Dict[str, Any]) -> Dict[str, Any]:
         """
         Prunes extraneous LLM reasoning keys and coerces arguments based on schema / signature.
         """
-        pruned = dict(args)
+        pruned = ToolRegistry.normalize_arguments(entry.name, args)
         known_fields: Optional[Set[str]] = None
 
         if entry.args_schema is not None:
@@ -446,10 +612,13 @@ class ToolRegistry:
                 duration_ms=0.0,
             )
 
-        # 1. Authorization
+        # 1. Normalize arguments
+        call_args = self.normalize_arguments(entry.name, args)
+
+        # 2. Authorization
         auth_res = self.authorize(
             name=entry.name,
-            args=args,
+            args=call_args,
             agent_role=caller_role,
             task_permissions=task_permissions,
             workspace=workspace,
@@ -461,16 +630,6 @@ class ToolRegistry:
                 metadata={"suggested_action": auth_res.suggested_action},
                 duration_ms=round((time.time() - t_start) * 1000, 2),
             )
-
-        # 2. Argument normalization
-        call_args = dict(args) if isinstance(args, dict) else {}
-        if entry.name in ("read_file", "write_file", "delete_file", "replace_file_content", "edit_file"):
-            if "file_path" in call_args and "filepath" not in call_args:
-                call_args["filepath"] = call_args.pop("file_path")
-            if "path" in call_args and "filepath" not in call_args:
-                call_args["filepath"] = call_args.pop("path")
-            if "text" in call_args and "content" not in call_args:
-                call_args["content"] = call_args.pop("text")
 
         # 3. Idempotency Check
         op_id = call_args.get("operation_id")

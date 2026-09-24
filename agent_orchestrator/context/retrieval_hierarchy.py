@@ -254,12 +254,13 @@ class RetrievalHierarchyEngine:
             used_l2 = 0
             dep_paths: Set[str] = set()
 
-            # 1. Gather dependencies via CodebaseGraph or FallbackEngine
+            # 1. Gather dependencies via CodebaseGraph (1-hop and 2-hop transitive)
             if self.code_graph:
                 for fp in focal_paths:
-                    deps = self.code_graph.get_dependencies(fp)
+                    deps = self.code_graph.get_dependencies(fp, max_depth=2) if hasattr(self.code_graph, "get_dependencies") else {}
                     if deps.get("success"):
-                        for imp in deps.get("imports", []):
+                        all_imports = deps.get("transitive_imports") or deps.get("imports", [])
+                        for imp in all_imports:
                             for kf in getattr(self.code_graph, "file_to_symbols", {}):
                                 kf_norm = kf.replace("\\", "/")
                                 if is_module_import_match(imp, kf_norm, fp):
@@ -273,19 +274,57 @@ class RetrievalHierarchyEngine:
                                     if sym_fp not in focal_paths:
                                         dep_paths.add(sym_fp)
 
-                        # Include downstream dependent files as well
-                        for df in deps.get("dependent_files", []):
+                        # Include downstream dependent files (direct and transitive)
+                        all_dependents = deps.get("transitive_dependent_files") or deps.get("dependent_files", [])
+                        for df in all_dependents:
                             df_norm = df.replace("\\", "/")
                             if df_norm not in focal_paths:
                                 dep_paths.add(df_norm)
 
-            # 2. Gather caller references for target symbols
+                    # Also query impact radius up to 2 hops
+                    if hasattr(self.code_graph, "get_impact_radius"):
+                        try:
+                            impact = self.code_graph.get_impact_radius(fp, max_depth=2)
+                            for aff_f in impact.get("affected_files", []):
+                                aff_norm = aff_f.replace("\\", "/")
+                                if aff_norm not in focal_paths:
+                                    dep_paths.add(aff_norm)
+                        except Exception:
+                            pass
+
+            # 2. Gather CBM multi-hop symbol neighbors if CBM is provided
+            if self.cbm and hasattr(self.cbm, "get_symbol_neighbors"):
+                for sym in list(target_symbols) + list(focal_paths):
+                    try:
+                        cbm_res = self.cbm.get_symbol_neighbors(sym, depth=2)
+                        if cbm_res.get("found"):
+                            for item in cbm_res.get("callers", []) + cbm_res.get("callees", []):
+                                if item.get("filepath"):
+                                    cbm_fp = item["filepath"].replace("\\", "/")
+                                    if cbm_fp not in focal_paths:
+                                        dep_paths.add(cbm_fp)
+                    except Exception:
+                        pass
+
+            # 3. Gather caller references for target symbols
             for sym in target_symbols:
+                if self.code_graph and hasattr(self.code_graph, "get_call_graph"):
+                    try:
+                        cg_res = self.code_graph.get_call_graph(sym, max_depth=2)
+                        for c_item in cg_res.get("callers", []):
+                            c_fp = c_item.get("caller_filepath")
+                            if c_fp:
+                                c_norm = c_fp.replace("\\", "/")
+                                if c_norm not in focal_paths:
+                                    dep_paths.add(c_norm)
+                    except Exception:
+                        pass
+
                 if self.fallback_engine:
                     ws_dir = getattr(self.workspace, "root_dir", Path.cwd()) if self.workspace else Path.cwd()
                     ref_res = self.fallback_engine.execute("find_references", sym, workspace_dir=ws_dir)
                     if ref_res.success and isinstance(ref_res.data, list):
-                        for r in ref_res.data[:3]:
+                        for r in ref_res.data[:5]:
                             caller_fp = r.get("filepath")
                             if caller_fp:
                                 c_norm = caller_fp.replace("\\", "/")

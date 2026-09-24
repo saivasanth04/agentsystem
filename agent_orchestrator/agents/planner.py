@@ -2,7 +2,7 @@
 Planner Agent: Generates phased milestones, critical paths, and dependency graphs using ReadFileTool, ListDirectoryTool, and mcp-server-git.
 """
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from .base import BaseAgent
 from ..state import OrchestratorState
 
@@ -12,7 +12,18 @@ from ..runtime.validator import DeliverableValidator
 
 
 class PlannerAgent(BaseAgent):
-    def __init__(self, model: str = None, llm=None, workspace=None, tool_registry=None, skill_registry=None, mcp_client=None):
+    def __init__(
+        self,
+        model: str = None,
+        llm=None,
+        workspace=None,
+        tool_registry=None,
+        skill_registry=None,
+        mcp_client=None,
+        message_bus=None,
+        approval_gate=None,
+        **kwargs: Any,
+    ):
         super().__init__(
             name="PLANNER",
             role_description="Responsible for project-planning, dependency-mapping, inspecting existing project files, and creating phased roadmaps.",
@@ -22,9 +33,20 @@ class PlannerAgent(BaseAgent):
             tool_registry=tool_registry,
             skill_registry=skill_registry,
             mcp_client=mcp_client,
+            message_bus=message_bus,
+            approval_gate=approval_gate,
+            **kwargs,
         )
 
-    def execute(self, state: OrchestratorState, active_skills: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
+    def execute(self, state: Union[OrchestratorState, Dict[str, Any]], active_skills: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
+        if isinstance(state, dict) or state is None:
+            dict_state = state or {}
+            req = dict_state.get("user_request") or dict_state.get("goal") or "Plan execution roadmap"
+            state_obj = OrchestratorState(user_request=req)
+            for k, v in dict_state.items():
+                if hasattr(state_obj, k):
+                    setattr(state_obj, k, v)
+            state = state_obj
         replan_context = ""
         if state.replan_history:
             latest = state.replan_history[-1]
@@ -117,18 +139,20 @@ Provide a structured execution plan in JSON format with the following schema:
         prompt += "\nUse `list_directory` or `read_file` if you need to inspect existing workspace structure, and provide your plan or call `complete_task`."
 
         system_prompt = self.build_system_prompt(active_skills=active_skills)
-        planner_tools = [t.name for t in self.tool_registry.get_tools_for_agent(self.name)]
+        raw_tools = self.tool_registry.get_tools_for_agent(self.name) if hasattr(self.tool_registry, "get_tools_for_agent") else []
+        planner_tools = [getattr(t, "name", str(t)) for t in raw_tools]
 
+        effective_model = kwargs.get("model") or self.model
         loop_result = self.react_loop.run(
             system_prompt=system_prompt,
             user_prompt=prompt,
-            model=self.model,
+            model=effective_model,
             available_tools=planner_tools,
             agent_name=self.name,
             temperature=0.2,
             target_contract=ExecutionPlanContract,
             reasoning_config=kwargs.get("reasoning_config") or getattr(self, "reasoning_config", None),
-            **{k: v for k, v in kwargs.items() if k != "reasoning_config"},
+            **{k: v for k, v in kwargs.items() if k not in ("reasoning_config", "model")},
         )
 
         final_out = loop_result.get("final_output", {})

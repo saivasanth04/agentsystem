@@ -53,7 +53,10 @@ Thumbs.db
 
 # Orchestrator runtime data
 .orchestrator/
+.sandboxes/
+agent_orchestrator/logs/
 agent_orchestrator/workspace_output/
 
 # Frontend node_modules
 frontend/node_modules/
+dist/

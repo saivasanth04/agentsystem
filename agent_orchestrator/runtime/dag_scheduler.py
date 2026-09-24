@@ -62,7 +62,13 @@ class ConcurrentDAGScheduler:
         if not self.telemetry_engine and hasattr(orchestrator, "telemetry_engine"):
             self.telemetry_engine = getattr(orchestrator, "telemetry_engine", None)
 
+        canc_token = getattr(orchestrator, "cancellation_token", None)
+        if canc_token and getattr(canc_token, "is_cancelled", False):
+            from .cancellation import TaskCancelledError
+            canc_token.throw_if_cancelled()
+
         ready_tasks = task_dag.get_ready_tasks()
+
         if not ready_tasks:
             return {
                 "subtasks": task_dag.to_list(),

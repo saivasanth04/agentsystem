@@ -288,8 +288,8 @@ class FilesystemMCPServer(BaseMCPServer):
         )
 
 
-    def read_file(self, path: Optional[str] = None, filepath: Optional[str] = None) -> Dict[str, Any]:
-        target_path = filepath or path or ""
+    def read_file(self, path: Optional[str] = None, filepath: Optional[str] = None, file_path: Optional[str] = None) -> Dict[str, Any]:
+        target_path = filepath or file_path or path or ""
         target = self._resolve_path(target_path)
         rel_norm = str(target.relative_to(self.root_dir)).replace("\\", "/")
         denial = self._check_access(rel_norm, FileAccessMode.READ)
@@ -300,8 +300,9 @@ class FilesystemMCPServer(BaseMCPServer):
         content = target.read_text(encoding="utf-8", errors="replace")
         return {"path": target_path, "content": content, "size_bytes": len(content), "success": True}
 
-    def write_file(self, path: Optional[str] = None, content: str = "", filepath: Optional[str] = None) -> Dict[str, Any]:
-        target_path = filepath or path or ""
+    def write_file(self, path: Optional[str] = None, content: str = "", filepath: Optional[str] = None, file_path: Optional[str] = None, text: Optional[str] = None) -> Dict[str, Any]:
+        target_path = filepath or file_path or path or ""
+        eff_content = content if content else (text or "")
         target = self._resolve_path(target_path)
         rel_norm = str(target.relative_to(self.root_dir)).replace("\\", "/")
         denial = self._check_access(rel_norm, FileAccessMode.WRITE)
@@ -309,38 +310,71 @@ class FilesystemMCPServer(BaseMCPServer):
             return denial
         before_content = target.read_text(encoding="utf-8", errors="replace") if target.exists() and target.is_file() else None
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8", errors="replace")
-        self.change_journal.record_mutation(rel_norm, before_content, content)
-        return {"path": target_path, "bytes_written": len(content), "status": "saved", "success": True}
+        target.write_text(eff_content, encoding="utf-8", errors="replace")
+        self.change_journal.record_mutation(rel_norm, before_content, eff_content)
+        return {"path": target_path, "bytes_written": len(eff_content), "status": "saved", "success": True}
 
-    def list_directory(self, path: Optional[str] = None, recursive: bool = True, filepath: Optional[str] = None) -> Dict[str, Any]:
-        target_path = filepath or path or ""
+    def list_directory(self, path: Optional[str] = None, recursive: bool = True, filepath: Optional[str] = None, file_path: Optional[str] = None) -> Dict[str, Any]:
+        target_path = filepath or file_path or path or ""
         target = self._resolve_path(target_path) if target_path else self.root_dir
         if not target.exists():
             return {"error": f"Directory '{target_path}' does not exist.", "success": False}
 
         results = []
-        ignore_dirs = {"__pycache__", ".git", ".pytest_cache", "node_modules", ".venv", "venv"}
+        ignore_dirs = {"__pycache__", ".git", ".pytest_cache", "node_modules", ".venv", "venv", ".gemini", ".idea", ".vscode", "dist", "build"}
 
-        iterator = target.rglob("*") if recursive else target.glob("*")
-        for p in iterator:
-            rel = p.relative_to(self.root_dir)
-            rel_str = str(rel).replace("\\", "/")
-            if any(part in ignore_dirs for part in rel.parts):
-                continue
-            if hasattr(self, "file_access_policy") and self.file_access_policy:
-                if self.file_access_policy.is_blocked(rel_str):
+        if recursive:
+            for root, dirs, files in os.walk(target):
+                dirs[:] = [d for d in dirs if d not in ignore_dirs and not d.startswith(".")]
+                for d in dirs:
+                    p = Path(root) / d
+                    try:
+                        rel = p.relative_to(self.root_dir)
+                        rel_str = str(rel).replace("\\", "/")
+                        if hasattr(self, "file_access_policy") and self.file_access_policy:
+                            if self.file_access_policy.is_blocked(rel_str):
+                                continue
+                        results.append({
+                            "path": str(rel),
+                            "is_dir": True,
+                            "size_bytes": 0,
+                        })
+                    except Exception:
+                        pass
+                for f in files:
+                    p = Path(root) / f
+                    try:
+                        rel = p.relative_to(self.root_dir)
+                        rel_str = str(rel).replace("\\", "/")
+                        if hasattr(self, "file_access_policy") and self.file_access_policy:
+                            if self.file_access_policy.is_blocked(rel_str):
+                                continue
+                        results.append({
+                            "path": str(rel),
+                            "is_dir": False,
+                            "size_bytes": p.stat().st_size if p.exists() else 0,
+                        })
+                    except Exception:
+                        pass
+        else:
+            for p in target.glob("*"):
+                if any(part in ignore_dirs for part in p.parts):
                     continue
-            results.append({
-                "path": str(rel),
-                "is_dir": p.is_dir(),
-                "size_bytes": p.stat().st_size if p.is_file() else 0,
-            })
+                rel = p.relative_to(self.root_dir)
+                rel_str = str(rel).replace("\\", "/")
+                if hasattr(self, "file_access_policy") and self.file_access_policy:
+                    if self.file_access_policy.is_blocked(rel_str):
+                        continue
+                results.append({
+                    "path": str(rel),
+                    "is_dir": p.is_dir(),
+                    "size_bytes": p.stat().st_size if p.is_file() else 0,
+                })
 
         return {"root": str(self.root_dir), "entries": sorted(results, key=lambda x: x["path"]), "success": True}
 
-    def delete_file(self, path: Optional[str] = None, filepath: Optional[str] = None) -> Dict[str, Any]:
-        target_path = filepath or path or ""
+    def delete_file(self, path: Optional[str] = None, filepath: Optional[str] = None, file_path: Optional[str] = None) -> Dict[str, Any]:
+        target_path = filepath or file_path or path or ""
         target = self._resolve_path(target_path)
         rel_norm = str(target.relative_to(self.root_dir)).replace("\\", "/")
         denial = self._check_access(rel_norm, FileAccessMode.DELETE)
@@ -356,8 +390,8 @@ class FilesystemMCPServer(BaseMCPServer):
             shutil.rmtree(target)
         return {"path": target_path, "status": "deleted", "success": True}
 
-    def get_file_info(self, path: Optional[str] = None, filepath: Optional[str] = None) -> Dict[str, Any]:
-        target_path = filepath or path or ""
+    def get_file_info(self, path: Optional[str] = None, filepath: Optional[str] = None, file_path: Optional[str] = None) -> Dict[str, Any]:
+        target_path = filepath or file_path or path or ""
         target = self._resolve_path(target_path)
         rel_norm = str(target.relative_to(self.root_dir)).replace("\\", "/")
         denial = self._check_access(rel_norm, FileAccessMode.READ)
@@ -379,12 +413,13 @@ class FilesystemMCPServer(BaseMCPServer):
         replacement_content: str,
         path: Optional[str] = None,
         filepath: Optional[str] = None,
+        file_path: Optional[str] = None,
         start_line: Optional[int] = None,
         end_line: Optional[int] = None,
         allow_multiple: bool = False,
         fuzzy: bool = True,
     ) -> Dict[str, Any]:
-        target_path = filepath or path or ""
+        target_path = filepath or file_path or path or ""
         target = self._resolve_path(target_path)
         rel_norm = str(target.relative_to(self.root_dir)).replace("\\", "/")
         denial = self._check_access(rel_norm, FileAccessMode.WRITE)

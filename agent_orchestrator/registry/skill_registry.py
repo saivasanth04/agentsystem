@@ -380,29 +380,58 @@ class SkillExecutionEngine:
     ) -> Dict[str, Any]:
         """
         Reads reference material or rules associated with a skill.
+        Supports direct filenames, relative subfolder paths, SKILL.md, and line range slicing.
         """
         skill = self.registry.get_skill(skill_name)
         if not skill:
             return {"error": f"Skill '{skill_name}' not found in registry."}
 
-        # Check references first, then rules, scripts, resources
-        ref_path_str = skill.references.get(reference_name) or skill.rules.get(reference_name)
+        # 1. Direct dictionary match in references, rules, or scripts
+        ref_path_str = (
+            skill.references.get(reference_name)
+            or skill.rules.get(reference_name)
+            or skill.scripts.get(reference_name)
+        )
+
+        # 2. Path resolution within skill base_dir
+        if not ref_path_str and skill.base_dir:
+            base_p = Path(skill.base_dir).resolve()
+            ref_clean = reference_name.strip()
+            if ref_clean.lower() in ("skill.md", "skill", "instructions", "guide", "main"):
+                cand = base_p / "SKILL.md"
+                if cand.exists():
+                    ref_path_str = str(cand)
+            elif ref_clean.lower() in ("readme.md", "readme"):
+                cand = base_p / "README.md"
+                if cand.exists():
+                    ref_path_str = str(cand)
+            else:
+                candidates = [
+                    (base_p / ref_clean).resolve(),
+                    (base_p / f"{ref_clean}.md").resolve(),
+                    (base_p / "references" / ref_clean).resolve(),
+                    (base_p / "references" / f"{ref_clean}.md").resolve(),
+                    (base_p / "resources" / ref_clean).resolve(),
+                    (base_p / "resources" / f"{ref_clean}.md").resolve(),
+                    (base_p / "examples" / ref_clean).resolve(),
+                    (base_p / "docs" / ref_clean).resolve(),
+                ]
+                for c in candidates:
+                    if c.exists() and c.is_file():
+                        ref_path_str = str(c)
+                        break
+
+        # 3. Fallback partial name matching
         if not ref_path_str:
-            # Fallback search by partial name or direct relative path inside base_dir
-            for k, v in {**skill.references, **skill.rules}.items():
+            for k, v in {**skill.references, **skill.rules, **skill.scripts}.items():
                 if reference_name.lower() in k.lower():
                     ref_path_str = v
                     break
 
-            if not ref_path_str and skill.base_dir:
-                candidate = (Path(skill.base_dir) / reference_name).resolve()
-                if candidate.exists() and candidate.is_file():
-                    ref_path_str = str(candidate)
-
         if not ref_path_str:
             avail = list(skill.references.keys()) + list(skill.rules.keys())
             return {
-                "error": f"Reference '{reference_name}' not found for skill '{skill_name}'. Available: {avail}"
+                "error": f"Reference '{reference_name}' not found for skill '{skill_name}'. Available: {avail[:20]}"
             }
 
         ref_path = Path(ref_path_str).resolve()
@@ -412,7 +441,6 @@ class SkillExecutionEngine:
                 if not ref_path.is_relative_to(base_p):
                     return {"error": f"Access denied: reference '{reference_name}' is outside skill directory."}
             except AttributeError:
-                # Python < 3.9 compatibility
                 if not str(ref_path).startswith(str(base_p)):
                     return {"error": f"Access denied: reference '{reference_name}' is outside skill directory."}
 
@@ -429,23 +457,25 @@ class SkillExecutionEngine:
                 e = min(total_lines, end_line or total_lines)
                 sliced_lines = lines[s:e]
                 return {
-                    "skill": skill_name,
+                    "skill": skill.name,
                     "reference": reference_name,
                     "path": str(ref_path),
                     "total_lines": total_lines,
                     "line_range": f"{s+1}-{e}",
                     "content": "\n".join(sliced_lines),
+                    "success": True,
                 }
 
             return {
-                "skill": skill_name,
+                "skill": skill.name,
                 "reference": reference_name,
                 "path": str(ref_path),
                 "total_lines": total_lines,
                 "content": content,
+                "success": True,
             }
         except Exception as ex:
-            return {"error": f"Failed reading reference '{reference_name}': {str(ex)}"}
+            return {"error": f"Failed reading reference '{reference_name}': {str(ex)}", "success": False}
 
     def execute_script(
         self,
@@ -462,17 +492,26 @@ class SkillExecutionEngine:
             return {"error": f"Skill '{skill_name}' not found in registry."}
 
         script_path_str = skill.scripts.get(script_name)
+        if not script_path_str and skill.base_dir:
+            base_p = Path(skill.base_dir).resolve()
+            s_clean = script_name.strip()
+            for cand in [
+                base_p / s_clean,
+                base_p / "scripts" / s_clean,
+                base_p / "scripts" / f"{s_clean}.py",
+                base_p / "scripts" / f"{s_clean}.sh",
+                base_p / "scripts" / f"{s_clean}.ps1",
+                base_p / "scripts" / f"{s_clean}.js",
+            ]:
+                if cand.exists() and cand.is_file():
+                    script_path_str = str(cand)
+                    break
+
         if not script_path_str:
-            # Try fuzzy match
             for k, v in skill.scripts.items():
                 if script_name.lower() in k.lower():
                     script_path_str = v
                     break
-
-            if not script_path_str and skill.base_dir:
-                candidate = (Path(skill.base_dir) / script_name).resolve()
-                if candidate.exists() and candidate.is_file():
-                    script_path_str = str(candidate)
 
         if not script_path_str:
             return {
@@ -519,13 +558,13 @@ class SkillExecutionEngine:
             res = sandbox.run_command(cmd, timeout=timeout, cwd=str(skill.base_dir))
             if res.timed_out:
                 return {
-                    "skill": skill_name,
+                    "skill": skill.name,
                     "script": script_name,
                     "error": f"Execution timed out after {timeout} seconds.",
                     "success": False,
                 }
             return {
-                "skill": skill_name,
+                "skill": skill.name,
                 "script": script_name,
                 "exit_code": res.exit_code,
                 "stdout": res.stdout,
@@ -534,7 +573,7 @@ class SkillExecutionEngine:
             }
         except Exception as ex:
             return {
-                "skill": skill_name,
+                "skill": skill.name,
                 "script": script_name,
                 "error": f"Execution failed: {str(ex)}",
                 "success": False,
@@ -888,7 +927,15 @@ class SkillManager:
         _index_dir(skill_dir / "scripts", scripts)
         _index_dir(skill_dir / "references", references)
         _index_dir(skill_dir / "resources", references)
+        _index_dir(skill_dir / "examples", references)
+        _index_dir(skill_dir / "docs", references)
+        _index_dir(skill_dir / "templates", references)
         _index_dir(skill_dir / "rules", rules)
+
+        # Index root documentation and markdown files
+        for f in skill_dir.glob("*.md"):
+            references[f.name] = str(f)
+            references[f.stem] = str(f)
 
         if not required_tools:
             required_tools = ["read_file", "replace_file_content", "terminal_execute"]
@@ -932,6 +979,43 @@ class SkillManager:
 
         self._skills[name] = manifest
 
+    # Common engineering skill aliases for intuitive shorthand lookups
+    COMMON_ALIASES = {
+        "tdd": "test-driven-development",
+        "debug": "debugging-and-error-recovery",
+        "debugging": "debugging-and-error-recovery",
+        "review": "code-review-and-quality",
+        "code-review": "code-review-and-quality",
+        "code_review": "code-review-and-quality",
+        "spec": "spec-driven-development",
+        "planning": "planning-and-task-breakdown",
+        "plan": "planning-and-task-breakdown",
+        "design": "api-and-interface-design",
+        "api-design": "api-and-interface-design",
+        "migration": "deprecation-and-migration",
+        "security": "security-and-hardening",
+        "hardening": "security-and-hardening",
+        "simplify": "code-simplification",
+        "refactor": "code-simplification",
+        "ci": "ci-cd-and-automation",
+        "cd": "ci-cd-and-automation",
+        "ci-cd": "ci-cd-and-automation",
+        "ui": "frontend-ui-engineering",
+        "frontend": "frontend-ui-engineering",
+        "git": "git-workflow-and-versioning",
+        "cdd": "constraint-driven-development",
+        "ddd": "doubt-driven-development",
+        "context": "context-engineering",
+        "idea": "idea-refine",
+        "interview": "interview-me",
+        "shipping": "shipping-and-launch",
+        "observability": "observability-and-instrumentation",
+        "performance": "performance-optimization",
+        "writing": "writing-guidelines",
+        "web-design": "web-design-guidelines",
+        "vercel": "deploy-to-vercel",
+    }
+
     def register_skill(self, skill: SkillManifest):
         """Manually registers or overrides a skill, indexing its version."""
         with self._lock:
@@ -955,15 +1039,22 @@ class SkillManager:
             self._rebuild_semantic_index()
 
     def get_skill(self, name: str, version: Optional[str] = None) -> Optional[SkillManifest]:
-        """Gets a skill by exact or normalized name, optionally constrained by version."""
+        """Gets a skill by exact, alias, or normalized name, optionally constrained by version."""
         with self._lock:
-            norm = name.replace("_", "-").lower()
+            # Parse embedded version spec if present (e.g. 'tdd@^1.0.0')
+            parsed_name, parsed_version = parse_dependency_spec(name)
+            eff_version = version or parsed_version
+            clean_name = parsed_name.strip()
 
-            # Check versioned map first if present
+            norm = clean_name.replace("_", "-").lower()
+            if norm in self.COMMON_ALIASES:
+                norm = self.COMMON_ALIASES[norm]
+
+            # 1. Check versioned map first if present
             if norm in self._versions and self._versions[norm]:
                 version_map = self._versions[norm]
-                if version:
-                    clean_v = version.lstrip("@").strip()
+                if eff_version:
+                    clean_v = eff_version.lstrip("@").strip()
                     if clean_v in version_map:
                         return version_map[clean_v]
                     matching: List[Tuple[SemVer, SkillManifest]] = []
@@ -990,16 +1081,22 @@ class SkillManager:
                     except Exception:
                         pass
 
-            # Fallback to unversioned _skills map
-            manifest = self._skills.get(name)
+            # 2. Fallback to unversioned _skills map
+            manifest = self._skills.get(clean_name) or self._skills.get(norm)
             if not manifest:
                 for k, v in self._skills.items():
                     if k.replace("_", "-").lower() == norm:
                         manifest = v
                         break
 
-            if manifest and version:
-                clean_v = version.lstrip("@").strip()
+            # 3. Fallback to semantic discovery if direct name was not found
+            if not manifest:
+                discovered = self.discover(clean_name, top_k=1, threshold=0.35)
+                if discovered:
+                    manifest = discovered[0][0]
+
+            if manifest and eff_version:
+                clean_v = eff_version.lstrip("@").strip()
                 try:
                     if SemVer.parse(manifest.version).satisfies(clean_v):
                         return manifest

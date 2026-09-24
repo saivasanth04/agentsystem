@@ -6,13 +6,16 @@ ArtifactStore, TelemetryEngine, BudgetTracker, EventBus, and SwarmCoordinator).
 """
 import asyncio
 from datetime import datetime
+import hashlib
 import json
 import logging
 import os
 from pathlib import Path
 import threading
+import time
 import traceback
 from typing import Any, Dict, List, Optional, Set
+import uuid
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -667,28 +670,200 @@ async def list_sessions(
     for s in sessions:
         if status and str(s.get("status", "")).upper() != status.upper():
             continue
-        if verdict and str(s.get("review_verdict", "")).upper() != verdict.upper():
+        if verdict and str(s.get("review_verdict", s.get("verdict", ""))).upper() != verdict.upper():
             continue
         if query and query.lower() not in str(s.get("user_request", "")).lower() and query.lower() not in str(s.get("session_id", "")).lower():
             continue
-        filtered.append(s)
+
+        sid = s.get("session_id", "")
+        item = {
+            "session_id": sid,
+            "user_request": s.get("user_request", ""),
+            "status": s.get("status", "PENDING"),
+            "verdict": s.get("verdict", "UNDECIDED"),
+            "score": s.get("score", 0.0),
+            "iteration": s.get("current_iteration", s.get("iteration", 0)),
+            "max_iterations": s.get("max_iterations", 3),
+            "total_cost_usd": float(s.get("total_cost_usd") or 0.0),
+            "total_tokens": int(s.get("total_tokens") or 0),
+            "prompt_tokens": int(s.get("prompt_tokens") or 0),
+            "completion_tokens": int(s.get("completion_tokens") or 0),
+            "created_at": s.get("created_at") or datetime.now().isoformat(),
+            "updated_at": s.get("updated_at") or datetime.now().isoformat(),
+            "duration_seconds": float(s.get("total_duration_seconds") or s.get("duration_seconds") or 0.0),
+            "workspace_path": s.get("workspace_dir") or s.get("workspace_path") or str(WORKSPACE_ROOT),
+            "git_branch": s.get("git_branch", "main"),
+            "git_commit": s.get("git_commit", ""),
+            "is_active": sid in active_orchestrators,
+        }
+        filtered.append(item)
     return {"total": len(filtered), "sessions": filtered}
+
+
+def _normalize_task_dict(t: Any) -> Dict[str, Any]:
+    """Safely converts an ExecutableTask object or dictionary into a normalized dictionary."""
+    if hasattr(t, "to_dict"):
+        d = t.to_dict()
+    elif isinstance(t, dict):
+        d = dict(t)
+    elif hasattr(t, "__dict__"):
+        d = dict(t.__dict__)
+    else:
+        d = {}
+
+    tid = d.get("task_id") or d.get("id") or getattr(t, "task_id", getattr(t, "id", ""))
+    d["task_id"] = str(tid)
+    d["id"] = str(tid)
+
+    raw_state = d.get("state") or d.get("status") or getattr(t, "state", getattr(t, "status", "PENDING"))
+    state_str = raw_state.value if hasattr(raw_state, "value") else str(raw_state)
+    d["state"] = state_str
+    d["status"] = state_str
+
+    if "dependencies" not in d or not isinstance(d["dependencies"], list):
+        deps = getattr(t, "dependencies", [])
+        d["dependencies"] = list(deps) if isinstance(deps, (list, tuple, set)) else []
+
+    if "required_tools" not in d or not isinstance(d["required_tools"], list):
+        tools = getattr(t, "required_tools", getattr(t, "tools", []))
+        d["required_tools"] = list(tools) if isinstance(tools, (list, tuple, set)) else []
+
+    if "preferred_skills" not in d or not isinstance(d["preferred_skills"], list):
+        skills = getattr(t, "preferred_skills", getattr(t, "skills", []))
+        d["preferred_skills"] = list(skills) if isinstance(skills, (list, tuple, set)) else []
+
+    if "attempts" not in d:
+        attempts = getattr(t, "attempts", [])
+        d["attempts"] = attempts if isinstance(attempts, (list, int)) else []
+
+    if "observations" not in d:
+        obs = getattr(t, "observations", [])
+        d["observations"] = obs if isinstance(obs, list) else []
+
+    if "required_capabilities" not in d or not isinstance(d["required_capabilities"], list):
+        caps = getattr(t, "required_capabilities", getattr(t, "capabilities", []))
+        d["required_capabilities"] = list(caps) if isinstance(caps, (list, tuple, set)) else []
+
+    if "acceptance_tests" not in d or not isinstance(d["acceptance_tests"], list):
+        tests = getattr(t, "acceptance_tests", [])
+        d["acceptance_tests"] = list(tests) if isinstance(tests, (list, tuple, set)) else []
+
+    return d
 
 
 @app.get("/api/sessions/{session_id}")
 async def get_session_detail(session_id: str):
-    """Retrieves full detail for a given session including state, DAG tasks, messages, and review."""
+    """Retrieves full detail for a given session matching the frontend SessionDetail interface."""
     state = state_store.load_state(session_id)
     if not state:
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found.")
     
-    tasks_data = state_store.load_tasks(session_id)
+    raw_tasks = state_store.load_tasks(session_id)
+    tasks_data = [_normalize_task_dict(t) for t in (raw_tasks or [])]
     artifacts_data = artifact_store.list_artifacts(session_id=session_id)
     snapshots = checkpoint_mgr.list_snapshots()
     session_snapshots = [s for s in snapshots if session_id in s]
 
+    completed_cnt = sum(1 for t in tasks_data if str(t.get("state", "")).upper() in ("COMPLETED", "PASS"))
+    failed_cnt = sum(1 for t in tasks_data if str(t.get("state", "")).upper() == "FAILED")
+    running_cnt = sum(1 for t in tasks_data if str(t.get("state", "")).upper() in ("RUNNING", "VERIFYING", "IN_PROGRESS"))
+    pending_cnt = sum(1 for t in tasks_data if str(t.get("state", "")).upper() in ("PENDING", "READY", "BLOCKED"))
+
+    tools_used = set()
+    skills_used = set()
+    total_attempts = 0
+    obs_cnt = 0
+    for t in tasks_data:
+        for tool in t.get("required_tools", []):
+            tools_used.add(tool)
+        for skill in t.get("preferred_skills", []):
+            skills_used.add(skill)
+        attempts = t.get("attempts", [])
+        total_attempts += len(attempts) if isinstance(attempts, list) else (attempts if isinstance(attempts, int) else 1)
+        obs = t.get("observations", [])
+        obs_cnt += len(obs) if isinstance(obs, list) else 0
+
+    tok_usage = state.total_token_usage.to_dict() if hasattr(state.total_token_usage, "to_dict") else (state.total_token_usage if isinstance(state.total_token_usage, dict) else {})
+    prompt_tokens = tok_usage.get("prompt_tokens", 0) if isinstance(tok_usage, dict) else 0
+    completion_tokens = tok_usage.get("completion_tokens", 0) if isinstance(tok_usage, dict) else 0
+    total_tokens = tok_usage.get("total_tokens", prompt_tokens + completion_tokens) if isinstance(tok_usage, dict) else 0
+
+    status_str = state.status.value if hasattr(state.status, "value") else str(state.status)
+    verdict_str = state.verdict.value if hasattr(state.verdict, "value") else str(state.verdict)
+
+    repro = {}
+    if state.execution_snapshot:
+        if hasattr(state.execution_snapshot, "to_dict"):
+            repro = state.execution_snapshot.to_dict()
+        elif isinstance(state.execution_snapshot, dict):
+            repro = state.execution_snapshot
+
+    repro_formatted = {
+        "snapshot_id": repro.get("snapshot_id", session_snapshots[0] if session_snapshots else f"snap-{session_id[:8]}"),
+        "manifest_hash": repro.get("manifest_hash", hashlib.sha256(session_id.encode()).hexdigest()[:16]),
+        "git_dirty": repro.get("git_dirty", False),
+        "seed": repro.get("seed", 42),
+        "python_version": repro.get("python_version", "3.11+"),
+        "orchestrator_version": repro.get("orchestrator_version", "2.0.0"),
+        "workspace_path": getattr(state, "workspace_dir", None) or str(WORKSPACE_ROOT),
+        "git_branch": getattr(state, "git_branch", "main"),
+        "git_commit": getattr(state, "git_commit", ""),
+    }
+
+    exec_summary = {
+        "total_tasks": len(tasks_data),
+        "completed_tasks": completed_cnt,
+        "failed_tasks": failed_cnt,
+        "running_tasks": running_cnt,
+        "pending_tasks": pending_cnt,
+        "total_attempts": max(total_attempts, len(tasks_data)),
+        "checkpoints_count": len(session_snapshots),
+        "observations_count": obs_cnt,
+        "tools_used": sorted(list(tools_used)),
+        "skills_used": sorted(list(skills_used)),
+    }
+
+    rev = getattr(state, "review_output", {}) or {}
+    if isinstance(rev, dict):
+        final_report = {
+            "reviewer_summary": rev.get("summary", "Automated code and task review."),
+            "strengths": rev.get("strengths", []),
+            "issues": rev.get("issues", []),
+            "remediation_plan": rev.get("remediation_plan", []),
+            "score": getattr(state, "review_score", 0.0) or rev.get("score", 0.0),
+            "verdict": verdict_str,
+        }
+    else:
+        final_report = {
+            "reviewer_summary": str(rev),
+            "strengths": [],
+            "issues": [],
+            "remediation_plan": [],
+            "score": 0.0,
+            "verdict": verdict_str,
+        }
+
     return {
         "session_id": session_id,
+        "user_request": state.user_request,
+        "status": status_str,
+        "verdict": verdict_str,
+        "score": getattr(state, "review_score", 0.0) or (rev.get("score", 0.0) if isinstance(rev, dict) else 0.0),
+        "iteration": state.current_iteration,
+        "max_iterations": state.max_iterations,
+        "total_cost_usd": float(state.total_cost_usd or 0.0),
+        "total_tokens": total_tokens,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "created_at": state.created_at or datetime.now().isoformat(),
+        "updated_at": state.updated_at or datetime.now().isoformat(),
+        "duration_seconds": float(state.total_duration_seconds or 0.0),
+        "workspace_path": getattr(state, "workspace_dir", None) or str(WORKSPACE_ROOT),
+        "git_branch": getattr(state, "git_branch", "main"),
+        "git_commit": getattr(state, "git_commit", ""),
+        "reproducibility": repro_formatted,
+        "execution_summary": exec_summary,
+        "final_report": final_report,
         "state": state.to_dict() if hasattr(state, "to_dict") else state,
         "tasks": tasks_data,
         "artifacts": artifacts_data,
@@ -701,33 +876,52 @@ async def get_session_detail(session_id: str):
 async def delete_session(session_id: str):
     """Cancels and permanently deletes a session and its associated storage."""
     with orchestrator_lock:
+        orch = active_orchestrators.get(session_id)
+        if orch:
+            if hasattr(orch, "cancel"):
+                orch.cancel(reason="Session deleted by user")
+            elif hasattr(orch, "cancellation_source") and orch.cancellation_source:
+                orch.cancellation_source.cancel(reason="Session deleted by user")
         if session_id in active_tasks:
             active_tasks[session_id].cancel()
             active_tasks.pop(session_id, None)
         active_orchestrators.pop(session_id, None)
 
-    state_store.delete_session(session_id)
-    return {"success": True, "message": f"Session '{session_id}' deleted."}
+    deleted_artifacts = 0
+    if artifact_store:
+        try:
+            deleted_artifacts = artifact_store.delete_session_artifacts(session_id)
+        except Exception as e:
+            logger.warning(f"Error purging artifacts for session {session_id}: {e}")
+
+    deleted_db = state_store.delete_session(session_id)
+    _on_event_bus_event("SESSION_DELETED", payload={"session_id": session_id, "artifacts_deleted": deleted_artifacts})
+    return {"success": True, "message": f"Session '{session_id}' deleted.", "artifacts_deleted": deleted_artifacts}
 
 
 @app.post("/api/sessions/{session_id}/cancel")
-async def cancel_session(session_id: str, req: ActionRequest):
+async def cancel_session(session_id: str, req: Optional[ActionRequest] = None):
     """Gracefully cancels an active orchestration run."""
+    cancel_reason = (req.reason if req and req.reason else "Cancelled via Console")
     with orchestrator_lock:
         orch = active_orchestrators.get(session_id)
-        if orch and hasattr(orch, "cancellation_token") and orch.cancellation_token:
-            if hasattr(orch.cancellation_token, "cancel"):
-                orch.cancellation_token.cancel(reason=req.reason or "Cancelled via Console")
+        if orch:
+            if hasattr(orch, "cancel"):
+                orch.cancel(reason=cancel_reason)
+            elif hasattr(orch, "cancellation_source") and orch.cancellation_source:
+                orch.cancellation_source.cancel(reason=cancel_reason)
         if session_id in active_tasks:
             active_tasks[session_id].cancel()
 
     state = state_store.load_state(session_id)
     if state:
-        state.status = "CANCELLED"
-        state_store.save_state(state)
+        from agent_orchestrator.state import TaskStatus
+        state.status = TaskStatus.STOPPED
+        state_store.save_state(state, session_id=session_id)
 
-    _on_event_bus_event("WORKFLOW_CANCELLED", payload={"session_id": session_id, "reason": req.reason})
+    _on_event_bus_event("WORKFLOW_CANCELLED", payload={"session_id": session_id, "reason": cancel_reason})
     return {"success": True, "message": f"Session '{session_id}' cancelled."}
+
 
 
 @app.post("/api/sessions/{session_id}/resume")
@@ -788,43 +982,121 @@ async def rollback_session(session_id: str, req: ActionRequest):
 
 @app.get("/api/sessions/{session_id}/dag")
 async def get_session_dag(session_id: str):
-    """Returns task graph nodes, dependency edges, execution states, and parallel wave info."""
-    tasks = state_store.load_tasks(session_id)
-    if not tasks and session_id in active_orchestrators:
-        # Load from active instance in memory
-        orch = active_orchestrators[session_id]
-        if hasattr(orch, "active_dag") and orch.active_dag:
-            tasks = orch.active_dag.to_list()
+    """Returns task graph nodes, dependency edges, execution states, and parallel wave info matching DAGSnapshot."""
+    raw_tasks = state_store.load_tasks(session_id)
+    orch = active_orchestrators.get(session_id)
+    if not raw_tasks and orch and hasattr(orch, "active_dag") and orch.active_dag:
+        raw_tasks = orch.active_dag.list_tasks() if hasattr(orch.active_dag, "list_tasks") else orch.active_dag.to_list()
 
+    tasks = [_normalize_task_dict(t) for t in (raw_tasks or [])]
     nodes = []
     edges = []
+    task_id_to_wave = {}
+    waves: List[List[str]] = []
+    active_wave = 0
+
+    if orch and hasattr(orch, "active_dag") and orch.active_dag:
+        try:
+            waves = orch.active_dag.compute_waves()
+        except Exception:
+            waves = [[t.get("task_id") for t in tasks if t.get("task_id")]]
+    elif tasks:
+        resolved = set()
+        remaining = [dict(t) for t in tasks]
+        while remaining:
+            current_wave = []
+            next_remaining = []
+            for t in remaining:
+                deps = set(t.get("dependencies", []))
+                if deps.issubset(resolved):
+                    current_wave.append(t.get("task_id"))
+                else:
+                    next_remaining.append(t)
+            if not current_wave:
+                current_wave = [t.get("task_id") for t in remaining]
+                waves.append(current_wave)
+                break
+            waves.append(current_wave)
+            resolved.update(current_wave)
+            remaining = next_remaining
+
+    for w_idx, wave_nodes in enumerate(waves):
+        for nid in wave_nodes:
+            task_id_to_wave[nid] = w_idx
+
+    completed_cnt = 0
+    failed_cnt = 0
+    running_cnt = 0
+
     for t in tasks:
-        t_id = t.get("task_id")
-        nodes.append({
+        t_id = t.get("task_id") or t.get("id")
+        raw_state = t.get("state") or t.get("status") or "PENDING"
+        if raw_state in ("COMPLETED", "PASS"):
+            completed_cnt += 1
+        elif raw_state == "FAILED":
+            failed_cnt += 1
+        elif raw_state in ("RUNNING", "IN_PROGRESS", "VERIFYING"):
+            running_cnt += 1
+
+        attempts_val = t.get("attempts", [])
+        attempts_cnt = len(attempts_val) if isinstance(attempts_val, list) else (attempts_val if isinstance(attempts_val, int) else 1)
+
+        task_node = {
             "id": t_id,
             "task_id": t_id,
-            "objective": t.get("objective"),
-            "state": t.get("state", "PENDING"),
-            "owner_agent": t.get("owner_agent"),
+            "name": t.get("name") or t_id,
+            "description": t.get("objective") or t.get("description", ""),
+            "objective": t.get("objective") or t.get("description", ""),
+            "status": raw_state,
+            "state": raw_state,
+            "dependencies": t.get("dependencies", []),
+            "wave": task_id_to_wave.get(t_id, 0),
+            "assigned_agent": t.get("owner_agent") or t.get("assigned_agent"),
+            "owner_agent": t.get("owner_agent") or t.get("assigned_agent"),
             "capabilities": t.get("required_capabilities", []),
             "tools": t.get("required_tools", []),
+            "skills": t.get("preferred_skills", []),
             "inputs": t.get("inputs", []),
             "outputs": t.get("outputs", []),
             "acceptance_tests": t.get("acceptance_tests", []),
+            "attempts": attempts_cnt or 1,
+            "max_attempts": t.get("max_retries", 2) + 1 if "max_retries" in t else 3,
+            "result": t.get("result_data") or t.get("result"),
+            "error": t.get("error_message") or t.get("error"),
             "duration_seconds": t.get("duration_seconds", 0.0),
-            "cost": t.get("cost", 0.0),
-            "attempts": t.get("attempts", []),
-            "error_message": t.get("error_message"),
-        })
+            "cost": t.get("cost_usd", 0.0) or t.get("cost", 0.0),
+            "tool_history": t.get("tool_history", []),
+            "started_at": t.get("started_at"),
+            "completed_at": t.get("completed_at"),
+        }
+        nodes.append(task_node)
         for dep in t.get("dependencies", []):
             edges.append({
+                "from": dep,
+                "to": t_id,
                 "id": f"e-{dep}->{t_id}",
                 "source": dep,
                 "target": t_id,
-                "animated": t.get("state") == "RUNNING",
+                "animated": raw_state == "RUNNING",
             })
 
-    return {"nodes": nodes, "edges": edges, "task_count": len(nodes)}
+    for w_idx, wave_nodes in enumerate(waves):
+        if any(t.get("status") in ("RUNNING", "READY", "IN_PROGRESS", "VERIFYING") for t in nodes if t.get("id") in wave_nodes):
+            active_wave = w_idx
+            break
+
+    return {
+        "session_id": session_id,
+        "nodes": nodes,
+        "edges": edges,
+        "waves": waves,
+        "active_wave": active_wave,
+        "total_tasks": len(nodes),
+        "completed_tasks": completed_cnt,
+        "failed_tasks": failed_cnt,
+        "running_tasks": running_cnt,
+        "task_count": len(nodes),
+    }
 
 
 @app.get("/api/sessions/{session_id}/messages")

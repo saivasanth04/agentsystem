@@ -4,7 +4,7 @@ Scopes tools strictly to the manifest's declared tools, applies custom prompt te
 and dynamically injects JIT skills and model constraints.
 """
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from .base import BaseAgent
 from ..llm import LLMClient
 from ..state import OrchestratorState
@@ -95,6 +95,20 @@ class DynamicAgent(BaseAgent):
                 matches = [t for t in all_tools if norm in t.lower()]
                 scoped.extend(matches)
 
+        # Retain skill tools and tools required by declared skills
+        if self.declared_skills or self.capabilities:
+            skill_tools = ["search_skills", "load_skill", "read_skill_reference", "execute_skill_script"]
+            for st in skill_tools:
+                if st in all_tools and st not in scoped:
+                    scoped.append(st)
+            if self.skill_registry:
+                for s_name in (self.declared_skills or []):
+                    manifest = self.skill_registry.get_skill(s_name)
+                    if manifest and manifest.required_tools:
+                        for req_t in manifest.required_tools:
+                            if req_t in all_tools and req_t not in scoped:
+                                scoped.append(req_t)
+
         valid_tools = [t for t in set(scoped) if t in all_tools or t == "complete_task"]
         return valid_tools or all_tools
 
@@ -125,10 +139,18 @@ class DynamicAgent(BaseAgent):
 
         return base_prompt + "\n" + "\n".join(prompt_additions)
 
-    def execute(self, state: OrchestratorState, active_skills: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
+    def execute(self, state: Union[OrchestratorState, Dict[str, Any]], active_skills: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
         """
         Executes the dynamic agent using the ReAct loop with scoped tools.
         """
+        if isinstance(state, dict) or state is None:
+            dict_state = state or {}
+            req = dict_state.get("user_request") or dict_state.get("goal") or "Execute dynamic task"
+            state_obj = OrchestratorState(user_request=req)
+            for k, v in dict_state.items():
+                if hasattr(state_obj, k):
+                    setattr(state_obj, k, v)
+            state = state_obj
         task_info = kwargs.get("task_info") or {}
         if hasattr(self.tool_registry, "set_orchestrator_state"):
             self.tool_registry.set_orchestrator_state(state)
@@ -162,10 +184,11 @@ Instructions:
         max_turns = kwargs.get("max_turns")
         timeout_seconds = kwargs.get("timeout_seconds")
 
+        effective_model = kwargs.get("model") or self.model
         loop_result = self.react_loop.run(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            model=self.model,
+            model=effective_model,
             available_tools=scoped_tools,
             agent_name=self.name,
             temperature=temperature,
@@ -181,6 +204,12 @@ Instructions:
             initial_observations=initial_observations,
             start_turn=start_turn,
             approval_gate=kwargs.get("approval_gate") or self.approval_gate,
+            task_info=task_info,
+            **{k: v for k, v in kwargs.items() if k not in (
+                "state_store", "session_id", "task_id", "checkpoint_manager", "workspace",
+                "initial_messages", "initial_observations", "start_turn", "approval_gate",
+                "permissions", "max_turns", "timeout_seconds", "task_info", "model",
+            )},
         )
 
         final_out = loop_result.get("final_output", {})

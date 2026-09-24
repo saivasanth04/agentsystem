@@ -2,24 +2,29 @@ import React from 'react';
 import { DollarSign, Cpu, AlertTriangle } from 'lucide-react';
 
 interface TokenMeterProps {
-  currentTokens: number;
+  currentTokens?: number;
   maxTokens?: number;
-  currentCostUsd: number;
+  currentCostUsd?: number;
   maxCostUsd?: number;
   className?: string;
   showLabels?: boolean;
 }
 
 export const TokenMeter: React.FC<TokenMeterProps> = ({
-  currentTokens,
+  currentTokens = 0,
   maxTokens = 500000,
-  currentCostUsd,
+  currentCostUsd = 0.0,
   maxCostUsd = 5.0,
   className = '',
   showLabels = true,
 }) => {
-  const tokenPct = Math.min(100, Math.round((currentTokens / (maxTokens || 1)) * 100));
-  const costPct = Math.min(100, Math.round((currentCostUsd / (maxCostUsd || 1)) * 100));
+  const safeCost = typeof currentCostUsd === 'number' && !isNaN(currentCostUsd) ? currentCostUsd : 0;
+  const safeTokens = typeof currentTokens === 'number' && !isNaN(currentTokens) ? currentTokens : 0;
+  const safeMaxCost = typeof maxCostUsd === 'number' && maxCostUsd > 0 ? maxCostUsd : 5.0;
+  const safeMaxTokens = typeof maxTokens === 'number' && maxTokens > 0 ? maxTokens : 500000;
+
+  const tokenPct = Math.min(100, Math.round((safeTokens / safeMaxTokens) * 100));
+  const costPct = Math.min(100, Math.round((safeCost / safeMaxCost) * 100));
 
   const getBarColor = (pct: number) => {
     if (pct >= 100) return 'bg-rose-500 shadow-rose-950/40';
@@ -30,7 +35,7 @@ export const TokenMeter: React.FC<TokenMeterProps> = ({
   const formatTokens = (n: number) => {
     if (n >= 1000000) return `${(n / 1000000).toFixed(2)}M`;
     if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-    return n.toString();
+    return (n || 0).toString();
   };
 
   return (
@@ -44,7 +49,7 @@ export const TokenMeter: React.FC<TokenMeterProps> = ({
               SESSION COST
             </span>
             <span className="font-bold text-content-primary">
-              ${currentCostUsd.toFixed(4)} <span className="text-content-muted">/ ${maxCostUsd.toFixed(2)}</span>
+              ${safeCost.toFixed(4)} <span className="text-content-muted">/ ${safeMaxCost.toFixed(2)}</span>
             </span>
           </div>
         )}
@@ -65,7 +70,7 @@ export const TokenMeter: React.FC<TokenMeterProps> = ({
               TOTAL TOKENS
             </span>
             <span className="font-bold text-content-primary">
-              {formatTokens(currentTokens)} <span className="text-content-muted">/ {formatTokens(maxTokens)}</span>
+              {formatTokens(safeTokens)} <span className="text-content-muted">/ {formatTokens(safeMaxTokens)}</span>
             </span>
           </div>
         )}

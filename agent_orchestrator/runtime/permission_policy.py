@@ -127,6 +127,11 @@ TOOL_OPERATION_MAP: Dict[str, ToolOperationType] = {
     "get_architecture_slice": ToolOperationType.READ,
     "architecture_slice": ToolOperationType.READ,
     "request_more_evidence": ToolOperationType.READ,
+    "search_memory": ToolOperationType.READ,
+    "query_symbols": ToolOperationType.READ,
+    "index_codebase": ToolOperationType.READ,
+    "check_environment": ToolOperationType.READ,
+    "security_scan": ToolOperationType.READ,
 
     # WRITE tools
     "write_file": ToolOperationType.WRITE,
@@ -147,6 +152,7 @@ TOOL_OPERATION_MAP: Dict[str, ToolOperationType] = {
     "copy_file": ToolOperationType.WRITE,
     "filesystem_write": ToolOperationType.WRITE,
     "filesystem_delete": ToolOperationType.WRITE,
+    "store_memory": ToolOperationType.WRITE,
 
     # EXECUTE tools
     "terminal_execute": ToolOperationType.EXECUTE,
@@ -182,6 +188,9 @@ TOOL_OPERATION_MAP: Dict[str, ToolOperationType] = {
     "query_agent": ToolOperationType.CONTROL,
     "publish_finding": ToolOperationType.CONTROL,
     "read_inbox": ToolOperationType.CONTROL,
+    "workflow_telemetry": ToolOperationType.CONTROL,
+    "save_checkpoint": ToolOperationType.CONTROL,
+    "fetch_documentation": ToolOperationType.READ,
 
     # NETWORK tools
     "http_request": ToolOperationType.NETWORK,
@@ -296,9 +305,25 @@ class ToolPermissionPolicyEngine:
         clean = (tool_name or "").lower().strip()
         if clean in TOOL_OPERATION_MAP:
             return TOOL_OPERATION_MAP[clean]
-        bare = clean.split("__")[-1]
-        if bare.startswith("mcp_"):
-            bare = bare[4:]
+        bare = clean
+        if "__" in bare:
+            bare = bare.split("__")[-1]
+        prefixes = (
+            "mcp_", "builtin_", "native_",
+            "mcp-server-filesystem_", "mcp-server-git_", "mcp-server-terminal_", "mcp-server-memory_", "mcp-server-fetch_", "mcp-server-sqlite_",
+            "filesystem_", "git_", "terminal_", "memory_", "fetch_", "sqlite_",
+        )
+        changed = True
+        while changed:
+            changed = False
+            if bare in TOOL_OPERATION_MAP:
+                break
+            for pfx in prefixes:
+                if bare.startswith(pfx) and len(bare) > len(pfx) and bare not in TOOL_OPERATION_MAP:
+                    bare = bare[len(pfx):]
+                    changed = True
+                    break
+
         if bare in TOOL_OPERATION_MAP:
             return TOOL_OPERATION_MAP[bare]
         return ToolOperationType.READ

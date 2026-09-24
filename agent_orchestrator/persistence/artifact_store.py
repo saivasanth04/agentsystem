@@ -362,6 +362,41 @@ class ArtifactStore:
             self._index.pop(artifact_id, None)
             return True
 
+    def delete_session_artifacts(self, session_id: str) -> int:
+        """Deletes all artifacts associated with a session from disk and cache."""
+        deleted_count = 0
+        with self._lock:
+            # Find all matching artifact IDs
+            matching_ids = []
+            for aid, rec in self._index.items():
+                if rec.execution_id == session_id or (rec.metadata and rec.metadata.get("session_id") == session_id):
+                    matching_ids.append(aid)
+
+            for aid in matching_ids:
+                if self.delete(aid):
+                    deleted_count += 1
+
+            # Also scan category directories for any orphaned sidecar/files containing session_id
+            for cat in ArtifactCategory:
+                cat_dir = self._get_category_dir(cat)
+                if cat_dir.exists():
+                    for meta_file in list(cat_dir.glob("*.meta.json")):
+                        try:
+                            with open(meta_file, "r", encoding="utf-8") as f:
+                                meta_data = json.load(f)
+                            if meta_data.get("session_id") == session_id or meta_data.get("execution_id") == session_id:
+                                aid = meta_data.get("artifact_id")
+                                if aid:
+                                    self.delete(aid)
+                                else:
+                                    meta_file.unlink(missing_ok=True)
+                                deleted_count += 1
+                        except Exception:
+                            pass
+
+        return deleted_count
+
+
     def get_summary(self) -> Dict[str, Any]:
         """Returns statistical overview of stored artifacts across all categories."""
         summary: Dict[str, Any] = {

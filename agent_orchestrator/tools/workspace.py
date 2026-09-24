@@ -5,6 +5,7 @@ Enforces strict workspace path boundaries and safe path resolution against direc
 import os
 from pathlib import Path
 import shutil
+import tempfile
 import threading
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
@@ -1590,7 +1591,11 @@ class SandboxedWorkspace(WorkspaceManager):
         self.sandbox_id = sandbox_id or task_id or "default_sandbox"
         self.base_hashes: Dict[str, str] = {}
         self._base_contents: Dict[str, str] = {}
-        sandbox_path = (main_workspace.root_dir / ".sandboxes" / self.sandbox_id).resolve()
+        custom_base = os.environ.get("AGENT_SANDBOX_DIR")
+        if custom_base:
+            sandbox_path = (Path(custom_base) / self.sandbox_id).resolve()
+        else:
+            sandbox_path = (Path(tempfile.gettempdir()) / "agent_orchestrator_sandboxes" / self.sandbox_id).resolve()
         super().__init__(root_dir=sandbox_path)
         self._sync_from_main()
 

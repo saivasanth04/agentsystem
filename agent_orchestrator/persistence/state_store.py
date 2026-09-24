@@ -602,6 +602,32 @@ class SQLiteStateStore:
 
             return state
 
+    def delete_session(self, session_id: str) -> bool:
+        """Permanently deletes an orchestration session and all its associated database records."""
+        with self._lock:
+            conn = self._get_connection()
+            with conn:
+                try:
+                    conn.execute("PRAGMA foreign_keys = ON")
+                except Exception:
+                    pass
+                conn.execute("DELETE FROM operations WHERE session_id = ?", (session_id,))
+                conn.execute("DELETE FROM traces WHERE session_id = ?", (session_id,))
+                conn.execute("DELETE FROM telemetry_snapshots WHERE session_id = ?", (session_id,))
+                conn.execute("DELETE FROM events WHERE session_id = ?", (session_id,))
+                conn.execute("DELETE FROM rollback_events WHERE session_id = ?", (session_id,))
+                conn.execute("DELETE FROM file_changes WHERE session_id = ?", (session_id,))
+                conn.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
+                conn.execute("DELETE FROM task_step_transcripts WHERE session_id = ?", (session_id,))
+                conn.execute("DELETE FROM artifacts WHERE session_id = ?", (session_id,))
+                conn.execute("DELETE FROM checkpoints WHERE session_id = ?", (session_id,))
+                conn.execute("DELETE FROM observations WHERE session_id = ?", (session_id,))
+                conn.execute("DELETE FROM task_attempts WHERE session_id = ?", (session_id,))
+                conn.execute("DELETE FROM tasks WHERE session_id = ?", (session_id,))
+                cur = conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+                return cur.rowcount > 0
+
+
     def save_execution_snapshot(self, session_id: str, snapshot: Any):
         """Saves execution snapshot to session record."""
         with self._lock:
@@ -643,14 +669,8 @@ class SQLiteStateStore:
             rows = conn.execute("SELECT session_id, user_request, status, verdict, total_cost_usd, total_duration_seconds, created_at, updated_at FROM sessions ORDER BY updated_at DESC").fetchall()
             return [dict(r) for r in rows]
 
-    def delete_session(self, session_id: str):
-        """Deletes session and cascades to tasks, attempts, observations, and checkpoints."""
-        with self._lock:
-            conn = self._get_connection()
-            with conn:
-                conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
-
     # ==========================================
+
     # TASK CRUD
     # ==========================================
     def save_task(self, session_id: str, task: ExecutableTask):

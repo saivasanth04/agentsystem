@@ -2,6 +2,7 @@
 Codebase Graph Engine: Resolved Call Graphs, Transitive Dependencies, and Impact Radius.
 Provides high-precision multi-hop symbol resolution, caller/callee trees, and change blast radius analysis.
 """
+import os
 from collections import deque
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -66,12 +67,13 @@ class CodebaseGraph:
                 "success": True,
             }
 
-        # Discover all eligible files
+        # Discover all eligible files with directory pruning to avoid traversing node_modules/.git
         target_files: List[Path] = []
-        for p in self.workspace_dir.rglob("*"):
-            if p.is_file() and not any(part in IGNORE_DIRS for part in p.parts):
-                if self.parser_registry.is_supported(p.name):
-                    target_files.append(p)
+        for root, dirs, files in os.walk(self.workspace_dir):
+            dirs[:] = [d for d in dirs if d not in IGNORE_DIRS and not d.startswith(".")]
+            for f in files:
+                if self.parser_registry.is_supported(f):
+                    target_files.append(Path(root) / f)
 
         active_rel_paths = {str(p.relative_to(self.workspace_dir)).replace("\\", "/") for p in target_files}
 
@@ -399,22 +401,30 @@ class CodebaseGraph:
             "success": True,
         }
 
-    def get_dependencies(self, target: str) -> Dict[str, Any]:
+    def get_dependencies(self, target: str, max_depth: int = 1) -> Dict[str, Any]:
         """
         Retrieves upstream dependencies (what target depends on) and downstream dependents (what uses target).
-        Target can be a file path or a symbol name. Backward-compatible with CodeGraphEngine.
+        Target can be a file path or a symbol name. Supports multi-hop transitive dependency resolution.
         """
         clean_target = target.strip().replace("\\", "/")
 
-        # Case 1: Target is a file path
-        if clean_target in self.file_imports or any(clean_target in f for f in self.file_to_symbols):
-            matched_file = next((f for f in self.file_to_symbols if clean_target in f), clean_target)
+        # Case 1: Target is a file path or matches a file in index
+        matched_file = None
+        if clean_target in self.file_imports or clean_target in self.file_to_symbols:
+            matched_file = clean_target
+        else:
+            for f in self.file_to_symbols:
+                if clean_target == f or clean_target == Path(f).name or f.endswith("/" + clean_target.lstrip("/")):
+                    matched_file = f
+                    break
+
+        if matched_file:
             direct_imports = sorted(list(self.file_imports.get(matched_file, [])))
             symbols_defined = [s.to_dict() for s in self.file_to_symbols.get(matched_file, [])]
             defined_sym_names = {s["name"].lower() for s in symbols_defined if "name" in s}
 
-            # Find files that import this file or its symbols
-            dependents = []
+            # Direct dependents (1-hop)
+            direct_dependents = []
             for other_file, imports in self.file_imports.items():
                 if other_file == matched_file:
                     continue
@@ -422,14 +432,53 @@ class CodebaseGraph:
                     any(is_module_import_match(imp, matched_file, other_file) for imp in imports if imp)
                     or any(s in [i.lower() for i in imports] for s in defined_sym_names)
                 ):
-                    dependents.append(other_file)
+                    direct_dependents.append(other_file)
+
+            # Multi-hop transitive dependencies & dependents if max_depth > 1
+            transitive_imports: Set[str] = set(direct_imports)
+            transitive_dependents: Set[str] = set(direct_dependents)
+
+            if max_depth > 1:
+                # Transitive upstream files
+                imp_queue: deque = deque([(matched_file, 1)])
+                visited_imp_files: Set[str] = {matched_file}
+                while imp_queue:
+                    curr_f, d = imp_queue.popleft()
+                    if d > max_depth:
+                        continue
+                    curr_imps = self.file_imports.get(curr_f, set())
+                    for imp in curr_imps:
+                        transitive_imports.add(imp)
+                        # Find corresponding file
+                        for kf in self.file_to_symbols:
+                            if kf not in visited_imp_files and is_module_import_match(imp, kf, curr_f):
+                                visited_imp_files.add(kf)
+                                imp_queue.append((kf, d + 1))
+
+                # Transitive downstream files
+                dep_queue: deque = deque([(df, 1) for df in direct_dependents])
+                visited_dep_files: Set[str] = {matched_file}.union(direct_dependents)
+                while dep_queue:
+                    curr_df, d = dep_queue.popleft()
+                    if d > max_depth:
+                        continue
+                    df_syms = {s.name.lower() for s in self.file_to_symbols.get(curr_df, [])}
+                    for of, o_imps in self.file_imports.items():
+                        if of not in visited_dep_files:
+                            if any(is_module_import_match(imp, curr_df, of) for imp in o_imps if imp) or any(s in [i.lower() for i in o_imps] for s in df_syms):
+                                visited_dep_files.add(of)
+                                transitive_dependents.add(of)
+                                dep_queue.append((of, d + 1))
 
             return {
                 "target_type": "file",
                 "filepath": matched_file,
                 "imports": direct_imports,
                 "defined_symbols": symbols_defined,
-                "dependent_files": sorted(dependents),
+                "dependent_files": sorted(direct_dependents),
+                "transitive_imports": sorted(list(transitive_imports)),
+                "transitive_dependent_files": sorted(list(transitive_dependents)),
+                "max_depth": max_depth,
                 "success": True,
             }
 
@@ -447,63 +496,97 @@ class CodebaseGraph:
 
     def get_call_graph(self, target: str, max_depth: int = 2) -> Dict[str, Any]:
         """
-        Traverses callers (upstream) and callees (downstream) for a symbol up to max_depth.
+        Traverses callers (upstream) and callees (downstream) for a symbol, class, or file up to max_depth.
         """
-        sym_res = self.find_symbol(target)
-        sym_list = sym_res.get("symbols", [])
-        if not sym_list:
-            return {"target": target, "found": False, "callers": [], "callees": [], "success": False}
+        clean_target = target.strip().replace("\\", "/")
+        seed_symbols: List[str] = []
+        matched_file: Optional[str] = None
 
-        primary_sym = sym_list[0]["qualified_name"]
+        # 1. Check if target is a file path
+        if clean_target in self.file_to_symbols:
+            matched_file = clean_target
+        else:
+            for f in self.file_to_symbols:
+                if clean_target == f or clean_target == Path(f).name or f.endswith("/" + clean_target.lstrip("/")):
+                    matched_file = f
+                    break
 
-        # 1. Downstream Callees (what does primary_sym call?)
+        if matched_file:
+            seed_symbols = [s.qualified_name for s in self.file_to_symbols.get(matched_file, [])]
+        else:
+            # 2. Check if target is a qualified symbol or symbol name
+            if clean_target in self.qualified_symbols:
+                seed_symbols = [clean_target]
+            else:
+                sym_res = self.find_symbol(clean_target)
+                sym_list = sym_res.get("symbols", [])
+                seed_symbols = [s["qualified_name"] for s in sym_list]
+
+        if not seed_symbols:
+            return {"target": target, "found": False, "callers": [], "callees": [], "total_callers": 0, "total_callees": 0, "success": False}
+
+        primary_sym = seed_symbols[0]
+        max_d = max(1, min(max_depth, 6))
+
+        # Downstream Callees (what do seed_symbols call?)
         callees: List[Dict[str, Any]] = []
-        visited_callees: Set[str] = {primary_sym}
-        queue: deque = deque([(primary_sym, 1)])
+        visited_callees: Set[str] = set(seed_symbols)
+        callee_seen_edges: Set[Tuple[str, str, int]] = set()
+        queue: deque = deque([(sym, 1) for sym in seed_symbols])
 
         while queue:
             curr_sym, depth = queue.popleft()
-            if depth > max_depth:
+            if depth > max_d:
                 continue
 
             for edge in self.call_graph.get(curr_sym, []):
-                callees.append({
-                    "caller": curr_sym,
-                    "callee": edge.callee_symbol or edge.callee_name,
-                    "target_filepath": edge.target_filepath,
-                    "line": edge.line,
-                    "depth": depth,
-                    "resolved": edge.resolved,
-                })
+                callee_ident = edge.callee_symbol or edge.callee_name
+                edge_key = (curr_sym, callee_ident, depth)
+                if edge_key not in callee_seen_edges:
+                    callee_seen_edges.add(edge_key)
+                    callees.append({
+                        "caller": curr_sym,
+                        "callee": callee_ident,
+                        "target_filepath": edge.target_filepath,
+                        "line": edge.line,
+                        "depth": depth,
+                        "resolved": edge.resolved,
+                    })
                 if edge.callee_symbol and edge.callee_symbol not in visited_callees:
                     visited_callees.add(edge.callee_symbol)
                     queue.append((edge.callee_symbol, depth + 1))
 
-        # 2. Upstream Callers (who calls primary_sym?)
+        # Upstream Callers (who calls seed_symbols?)
         callers: List[Dict[str, Any]] = []
-        visited_callers: Set[str] = {primary_sym}
-        queue = deque([(primary_sym, 1)])
+        visited_callers: Set[str] = set(seed_symbols)
+        caller_seen_edges: Set[Tuple[str, str, int]] = set()
+        caller_queue: deque = deque([(sym, 1) for sym in seed_symbols])
 
-        while queue:
-            curr_sym, depth = queue.popleft()
-            if depth > max_depth:
+        while caller_queue:
+            curr_sym, depth = caller_queue.popleft()
+            if depth > max_d:
                 continue
 
             for edge in self.reverse_call_graph.get(curr_sym, []):
-                callers.append({
-                    "caller": edge.caller_symbol,
-                    "callee": curr_sym,
-                    "caller_filepath": edge.caller_filepath,
-                    "line": edge.line,
-                    "depth": depth,
-                })
+                edge_key = (edge.caller_symbol, curr_sym, depth)
+                if edge_key not in caller_seen_edges:
+                    caller_seen_edges.add(edge_key)
+                    callers.append({
+                        "caller": edge.caller_symbol,
+                        "callee": curr_sym,
+                        "caller_filepath": edge.caller_filepath,
+                        "line": edge.line,
+                        "depth": depth,
+                    })
                 if edge.caller_symbol and edge.caller_symbol not in visited_callers:
                     visited_callers.add(edge.caller_symbol)
-                    queue.append((edge.caller_symbol, depth + 1))
+                    caller_queue.append((edge.caller_symbol, depth + 1))
 
         return {
             "target": target,
             "qualified_name": primary_sym,
+            "depth": max_d,
+            "seed_symbols_count": len(seed_symbols),
             "found": True,
             "callers": callers,
             "callees": callees,

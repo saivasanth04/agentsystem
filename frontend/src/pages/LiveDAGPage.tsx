@@ -29,6 +29,13 @@ export const LiveDAGPage: React.FC<LiveDAGPageProps> = ({ sessionId: propSession
   const [isPaused, setIsPaused] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Sync propSessionId when route changes
+  useEffect(() => {
+    if (propSessionId && propSessionId !== activeSessionId) {
+      setActiveSessionId(propSessionId);
+    }
+  }, [propSessionId]);
+
   // If no session ID in props, find latest active or recent session
   useEffect(() => {
     if (!activeSessionId) {
@@ -39,6 +46,11 @@ export const LiveDAGPage: React.FC<LiveDAGPageProps> = ({ sessionId: propSession
       }).catch(console.error);
     }
   }, [activeSessionId]);
+
+  // Ensure websocket is connected
+  useEffect(() => {
+    orchestratorWS.connect();
+  }, []);
 
   // Load DAG and Session Details
   const refreshDAG = async () => {
@@ -51,9 +63,9 @@ export const LiveDAGPage: React.FC<LiveDAGPageProps> = ({ sessionId: propSession
 
       if (dagData) setDag(dagData);
       if (detail) {
-        setStatus(detail.status);
-        setCostUsd(detail.total_cost_usd);
-        setTokens(detail.total_tokens);
+        setStatus(detail.status || 'IN_PROGRESS');
+        setCostUsd(typeof detail.total_cost_usd === 'number' ? detail.total_cost_usd : 0.0);
+        setTokens(typeof detail.total_tokens === 'number' ? detail.total_tokens : 0);
       }
     } catch (err) {
       console.error('Failed to load live DAG:', err);
@@ -64,7 +76,7 @@ export const LiveDAGPage: React.FC<LiveDAGPageProps> = ({ sessionId: propSession
 
   useEffect(() => {
     refreshDAG();
-    const interval = setInterval(refreshDAG, 4000);
+    const interval = setInterval(refreshDAG, 3000);
     return () => clearInterval(interval);
   }, [activeSessionId]);
 
@@ -75,7 +87,7 @@ export const LiveDAGPage: React.FC<LiveDAGPageProps> = ({ sessionId: propSession
 
       // If event matches current session, trigger immediate DAG refresh
       if (!event.session_id || event.session_id === activeSessionId) {
-        if (event.event_type.includes('TASK') || event.event_type.includes('REPLAN') || event.event_type.includes('WORKFLOW')) {
+        if (event.event_type.includes('TASK') || event.event_type.includes('REPLAN') || event.event_type.includes('WORKFLOW') || event.event_type.includes('STAGE')) {
           refreshDAG();
         }
       }

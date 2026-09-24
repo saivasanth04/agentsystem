@@ -13,7 +13,7 @@ DEFAULT_KEY = secret_manager.get_secret("api_key", default="mock-key-for-testing
 
 @dataclass
 class OrchestratorConfig:
-    api_key: str = ""
+    api_key: str = os.getenv("OPENAI_API_KEY", os.getenv("GATEWAY_API_KEY", DEFAULT_KEY))
     base_url: str = os.getenv("GATEWAY_BASE_URL", os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:8000/v1"))
     default_model: str = os.getenv("ORCHESTRATOR_MODEL", "auto")
     planner_model: str = os.getenv("PLANNER_MODEL", "auto")

@@ -510,7 +510,9 @@ class TaskOrchestrator:
             self.on_event("PERSIST ERROR", f"Failed to persist state snapshot: {e}")
 
     def _node_discovery(self, state: OrchestratorGraphState) -> Dict[str, Any]:
+        self.cancellation_token.throw_if_cancelled()
         self.on_event("0. DISCOVERY", "Executing deterministic pre-flight project discovery across 10 dimensions...")
+
         from .runtime.project_discovery import ProjectDiscoveryEngine
         from .runtime.environment_probe import EnvironmentProbeEngine
 
@@ -599,8 +601,10 @@ class TaskOrchestrator:
         return updates
 
     def _node_understand(self, state: OrchestratorGraphState) -> Dict[str, Any]:
+        self.cancellation_token.throw_if_cancelled()
         self.on_event("1. UNDERSTAND", "Executing concurrent multi-domain analysis across Backend, Frontend, Database, and Security...")
         matrix = self.domain_analyzer.analyze_in_parallel(state["user_request"], model=self.cfg.default_model)
+
 
         # Baseline Test Suite Discovery & Pre-flight Execution
         from .runtime.test_detector import ExistingTestDetector
@@ -632,7 +636,9 @@ class TaskOrchestrator:
 
 
     def _node_decompose(self, state: OrchestratorGraphState) -> Dict[str, Any]:
+        self.cancellation_token.throw_if_cancelled()
         self.on_event("2. DECOMPOSE", "Dynamically determining required capabilities and synthesizing execution DAG...")
+
         
         # Ingest real environment context via Retrieval Hierarchy (Levels 4 & 5: Architecture & PageRank Repo Map)
         from .context.retrieval_hierarchy import RetrievalHierarchyEngine, HierarchyBudgetConfig, RetrievalLevel
@@ -737,7 +743,15 @@ Respond ONLY with the JSON array of tasks.
 """
         messages = [{"role": "system", "content": "You are the Intelligent Task Decomposer & Capability DAG Planner."}, {"role": "user", "content": prompt}]
         result = self.llm.chat_json(messages, model=self.cfg.default_model, temperature=0.2)
-        raw_tasks = result if isinstance(result, list) else (result.get("tasks") or result.get("subtasks") or result.get("steps") or [])
+        raw_tasks = result if isinstance(result, list) else (
+            (result.get("tasks") if isinstance(result, dict) else None)
+            or (result.get("subtasks") if isinstance(result, dict) else None)
+            or (result.get("steps") if isinstance(result, dict) else None)
+            or (result.get("executable_tasks") if isinstance(result, dict) else None)
+            or (result.get("plan") if isinstance(result, dict) and isinstance(result.get("plan"), list) else None)
+            or (result.get("dag") if isinstance(result, dict) and isinstance(result.get("dag"), list) else None)
+            or []
+        )
         if not raw_tasks:
             # Fallback sane default capability sequence
             raw_tasks = [
@@ -831,7 +845,9 @@ Respond ONLY with the JSON array of tasks.
         return updates
 
     def _node_execute_subtask(self, state: OrchestratorGraphState) -> Dict[str, Any]:
+        self.cancellation_token.throw_if_cancelled()
         subtasks_data = state.get("subtasks") or state.get("task_decomposition") or []
+
         task_dag = TaskDAG.from_list(subtasks_data)
 
         # Iteration baseline checkpoint before changes are applied
@@ -899,19 +915,6 @@ Respond ONLY with the JSON array of tasks.
                         self.artifact_store.put("specifications", f"arch_{name}.json", res, session_id=self.active_session_id)
                     except Exception:
                         pass
-                spec_cand = updates.get("specification_output") or state.get("specification_output")
-                if spec_cand:
-                    try:
-                        from .runtime.semantic_plan_validator import SemanticPlanValidator
-                        arch_audit = SemanticPlanValidator.verify_architecture_against_spec(spec_cand, res)
-                        self.on_event("ARCH_SEMANTIC_ALIGNMENT", f"{arch_audit.summary()}")
-                        if hasattr(self, "event_bus") and self.event_bus:
-                            try:
-                                self.event_bus.publish("ARCH_SEMANTIC_ALIGNMENT", payload=arch_audit.to_dict())
-                            except Exception:
-                                pass
-                    except Exception as audit_err:
-                        self.on_event("ARCH_AUDIT_ERROR", f"Notice: Architecture semantic validation error: {audit_err}")
             elif "test" in name_lower or "verify" in name_lower:
                 updates["test_output"] = res
                 if not state.get("baseline_test_info"):
@@ -937,13 +940,70 @@ Respond ONLY with the JSON array of tasks.
                     except Exception:
                         pass
 
+        # Capability-driven & task-result aggregation across all tasks in DAG
+        for t in task_dag.list_tasks():
+            t_res = t.result_data
+            if not t_res:
+                continue
+            t_caps = [str(c).lower() for c in (t.required_capabilities or [])]
+            t_agent = (t.owner_agent or "").upper()
+            t_obj = (t.objective or "").lower()
+
+            if t_agent == "CODER" or any(c in ("code-generation", "refactoring", "frontend", "backend", "coding", "general-coding", "defect-repair") for c in t_caps) or "implement" in t_obj or "code" in t_obj:
+                if "code_output" not in updates:
+                    updates["code_output"] = t_res
+                elif isinstance(t_res, dict) and isinstance(updates["code_output"], dict):
+                    existing_wf = list(updates["code_output"].get("written_files") or [])
+                    for wf in (t_res.get("written_files") or []):
+                        if wf not in existing_wf:
+                            existing_wf.append(wf)
+                    updates["code_output"]["written_files"] = existing_wf
+                    if t_res.get("change_manifest"):
+                        updates["code_output"]["change_manifest"] = t_res["change_manifest"]
+
+            if t_agent == "TESTER" or any(c in ("testing", "tdd", "unit-tests", "integration-tests", "verification") for c in t_caps) or "test" in t_obj or "verify" in t_obj:
+                if "test_output" not in updates:
+                    updates["test_output"] = t_res
+                    if not state.get("baseline_test_info"):
+                        updates["baseline_test_info"] = t_res
+
+            if t_agent == "SPECIFICATION" or any(c in ("spec-writing", "api-contracts", "requirements-analysis") for c in t_caps) or "spec" in t_obj or "contract" in t_obj:
+                if "specification_output" not in updates:
+                    updates["specification_output"] = t_res
+
+            if t_agent == "ARCHITECTURE" or any(c in ("software-architecture", "system-design", "component-hierarchy") for c in t_caps) or "arch" in t_obj or "topology" in t_obj:
+                if "architecture_output" not in updates:
+                    updates["architecture_output"] = t_res
+
+            if t_agent == "PLANNER" or any(c in ("planning", "roadmapping", "task-decomposition") for c in t_caps) or "plan" in t_obj:
+                if "plan_output" not in updates:
+                    updates["plan_output"] = t_res
+
+        # Semantic alignment check between architecture and spec if present
+        spec_cand = updates.get("specification_output") or state.get("specification_output")
+        arch_cand = updates.get("architecture_output") or state.get("architecture_output")
+        if spec_cand and arch_cand:
+            try:
+                from .runtime.semantic_plan_validator import SemanticPlanValidator
+                arch_audit = SemanticPlanValidator.verify_architecture_against_spec(spec_cand, arch_cand)
+                self.on_event("ARCH_SEMANTIC_ALIGNMENT", f"{arch_audit.summary()}")
+                if hasattr(self, "event_bus") and self.event_bus:
+                    try:
+                        self.event_bus.publish("ARCH_SEMANTIC_ALIGNMENT", payload=arch_audit.to_dict())
+                    except Exception:
+                        pass
+            except Exception as audit_err:
+                self.on_event("ARCH_AUDIT_ERROR", f"Notice: Architecture semantic validation error: {audit_err}")
+
         self._persist_current_state({**state, **updates})
         return updates
 
 
 
     def _node_reviewer(self, state: OrchestratorGraphState) -> Dict[str, Any]:
+        self.cancellation_token.throw_if_cancelled()
         discovered_reviewers = self.agent_registry.discover(
+
             query="code review quality audit security",
             capabilities=["code-review", "quality-audit"],
             top_k=1,
@@ -954,8 +1014,11 @@ Respond ONLY with the JSON array of tasks.
         skills = [m.name for m, _ in self.skill_registry.discover(query="code review quality standards", top_k=2)]
         self.on_event("EXECUTE AGENT", f"Dispatching Quality Audit [{agent.name}]")
 
+        from .routing.model_router import model_router, TaskComplexity
+        routed_rev_model = model_router.route(role=agent.name, complexity=TaskComplexity.COMPLEX)
+
         ostate = self._graph_to_state(state)
-        res = agent.execute(ostate, active_skills=skills)
+        res = agent.execute(ostate, active_skills=skills, model=routed_rev_model)
         verdict = res.get("verdict", "FAIL").upper()
         ev_info = res.get("evidence", {})
         if ev_info and isinstance(ev_info, dict):
@@ -1017,7 +1080,9 @@ Respond ONLY with the JSON array of tasks.
         return updates
 
     def _node_replan(self, state: OrchestratorGraphState) -> Dict[str, Any]:
+        self.cancellation_token.throw_if_cancelled()
         current_iter = state.get("iteration", 0) + 1
+
         self.on_event("6. RE-PLAN", f"Triggering Dynamic DAG Re-plan (Iteration {current_iter}/{state.get('max_iterations', 3)})...")
 
         # Check session budget before continuing replan iteration (Issue #35)
@@ -1688,6 +1753,26 @@ Respond ONLY with the JSON array of tasks.
 
                 self.state_store.save_session(self.active_session_id, final_state)
                 return final_state
+            except Exception as e:
+                from .runtime.cancellation import TaskCancelledError
+                if isinstance(e, TaskCancelledError) or self.is_cancelled():
+                    cancel_reason = getattr(e, "reason", None) or self.cancellation_token.cancel_reason or "Cancelled by user"
+                    self.on_event("CANCELLED", f"Workflow execution was cancelled: {cancel_reason}")
+                    loaded = self.state_store.load_session(self.active_session_id)
+                    cancelled_state = loaded or self._graph_to_state(initial_state)
+                    cancelled_state.status = TaskStatus.STOPPED
+                    if hasattr(self, "event_bus") and self.event_bus:
+                        try:
+                            self.event_bus.publish(
+                                "WORKFLOW_CANCELLED",
+                                payload={"session_id": self.active_session_id, "reason": cancel_reason},
+                            )
+                        except Exception:
+                            pass
+                    self.state_store.save_session(self.active_session_id, cancelled_state)
+                    return cancelled_state
+                raise
+
             finally:
                 if session_log_handler:
                     try:

@@ -3,6 +3,7 @@ Codebase Memory & Knowledge Graph MCP Server.
 Provides AST symbol indexing, semantic code search, and session memory storage over MCP.
 """
 import ast
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -142,31 +143,35 @@ class CodebaseMemoryMCPServer(BaseMCPServer):
         self._symbol_index.clear()
         indexed_files = 0
         total_symbols = 0
+        ignore_dirs = {"__pycache__", ".git", ".pytest_cache", "node_modules", ".venv", "venv", ".gemini", ".idea", ".vscode", "dist", "build"}
 
-        for py_file in self.workspace_dir.rglob("*.py"):
-            rel_path = str(py_file.relative_to(self.workspace_dir))
-            if any(part in ("__pycache__", ".git", ".venv", "venv") for part in py_file.parts):
-                continue
-            try:
-                content = py_file.read_text(encoding="utf-8", errors="replace")
-                tree = ast.parse(content, filename=rel_path)
-                indexed_files += 1
+        for root, dirs, files in os.walk(self.workspace_dir):
+            dirs[:] = [d for d in dirs if d not in ignore_dirs and not d.startswith(".")]
+            for f in files:
+                if not f.endswith(".py"):
+                    continue
+                py_file = Path(root) / f
+                try:
+                    rel_path = str(py_file.relative_to(self.workspace_dir)).replace("\\", "/")
+                    content = py_file.read_text(encoding="utf-8", errors="replace")
+                    tree = ast.parse(content, filename=rel_path)
+                    indexed_files += 1
 
-                for node in ast.walk(tree):
-                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                        sym_type = "class" if isinstance(node, ast.ClassDef) else "function"
-                        doc = ast.get_docstring(node) or ""
-                        sym_info = {
-                            "name": node.name,
-                            "type": sym_type,
-                            "file": rel_path,
-                            "line": node.lineno,
-                            "docstring": doc.splitlines()[0] if doc else "",
-                        }
-                        self._symbol_index.setdefault(node.name.lower(), []).append(sym_info)
-                        total_symbols += 1
-            except Exception:
-                continue
+                    for node in ast.walk(tree):
+                        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                            sym_type = "class" if isinstance(node, ast.ClassDef) else "function"
+                            doc = ast.get_docstring(node) or ""
+                            sym_info = {
+                                "name": node.name,
+                                "type": sym_type,
+                                "file": rel_path,
+                                "line": node.lineno,
+                                "docstring": doc.splitlines()[0] if doc else "",
+                            }
+                            self._symbol_index.setdefault(node.name.lower(), []).append(sym_info)
+                            total_symbols += 1
+                except Exception:
+                    continue
 
         return {
             "indexed_files": indexed_files,

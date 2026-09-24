@@ -1,7 +1,7 @@
 import ast
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from .base import BaseAgent
 from ..state import OrchestratorState
 
@@ -9,7 +9,18 @@ from ..state import OrchestratorState
 class TesterAgent(BaseAgent):
     __test__ = False
 
-    def __init__(self, model: str = None, llm=None, workspace=None, tool_registry=None, skill_registry=None, mcp_client=None):
+    def __init__(
+        self,
+        model: str = None,
+        llm=None,
+        workspace=None,
+        tool_registry=None,
+        skill_registry=None,
+        mcp_client=None,
+        message_bus=None,
+        approval_gate=None,
+        **kwargs: Any,
+    ):
         super().__init__(
             name="TESTER",
             role_description="Responsible for automated test generation, test execution in terminal/sandbox, and debugging stack traces.",
@@ -19,9 +30,20 @@ class TesterAgent(BaseAgent):
             tool_registry=tool_registry,
             skill_registry=skill_registry,
             mcp_client=mcp_client,
+            message_bus=message_bus,
+            approval_gate=approval_gate,
+            **kwargs,
         )
 
-    def execute(self, state: OrchestratorState, active_skills: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
+    def execute(self, state: Union[OrchestratorState, Dict[str, Any]], active_skills: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
+        if isinstance(state, dict) or state is None:
+            dict_state = state or {}
+            req = dict_state.get("user_request") or dict_state.get("goal") or "Run automated tests"
+            state_obj = OrchestratorState(user_request=req)
+            for k, v in dict_state.items():
+                if hasattr(state_obj, k):
+                    setattr(state_obj, k, v)
+            state = state_obj
         task_info = kwargs.get("task_info") or {}
 
         # Multi-Level Retrieval Hierarchy: Level 1 (focal code) -> Level 2 (interfaces) -> Level 3 (fixtures/tests) -> Level 4 (conventions) -> Level 5 (repo map)
@@ -117,7 +139,8 @@ class TesterAgent(BaseAgent):
 
         prompt = assembler.assemble(sections)
         system_prompt = self.build_system_prompt(active_skills=active_skills)
-        tester_tools = [t.name for t in self.tool_registry.get_tools_for_agent(self.name)]
+        raw_tools = self.tool_registry.get_tools_for_agent(self.name) if hasattr(self.tool_registry, "get_tools_for_agent") else []
+        tester_tools = [getattr(t, "name", str(t)) for t in raw_tools]
 
         effective_model = kwargs.get("model") or self.model
         loop_result = self.react_loop.run(
@@ -126,6 +149,7 @@ class TesterAgent(BaseAgent):
             model=effective_model,
             available_tools=tester_tools,
             agent_name=self.name,
+            **{k: v for k, v in kwargs.items() if k not in ("model", "active_skills")},
         )
 
         final_out = loop_result.get("final_output", {})

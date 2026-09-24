@@ -1189,6 +1189,8 @@ class BuiltinToolRegistry:
 
     def get(self, name: str) -> Any:
         """Retrieves a tool entry, auto-syncing from _tools if directly assigned."""
+        if not name:
+            return None
         entry = self.registry.get(name)
         if entry:
             return entry
@@ -1198,6 +1200,29 @@ class BuiltinToolRegistry:
             return self.registry.register(tool_inst, name=getattr(tool_inst, "name", norm))
         for k, tool_inst in self._tools.items():
             if getattr(tool_inst, "name", "").lower() == norm:
+                return self.registry.register(tool_inst, name=getattr(tool_inst, "name", k))
+
+        # Strip prefixes (mcp_, builtin__, native_, <server>__)
+        bare = norm
+        if "__" in bare:
+            bare = bare.split("__")[-1]
+        prefixes = ("mcp_", "builtin_", "native_", "mcp-server-filesystem_", "mcp-server-git_", "mcp-server-terminal_", "mcp-server-memory_", "filesystem_", "git_", "terminal_", "memory_")
+        changed = True
+        while changed:
+            changed = False
+            if bare in self._tools:
+                break
+            for pfx in prefixes:
+                if bare.startswith(pfx) and len(bare) > len(pfx) and bare not in self._tools:
+                    bare = bare[len(pfx):]
+                    changed = True
+                    break
+
+        if bare in self._tools:
+            tool_inst = self._tools[bare]
+            return self.registry.register(tool_inst, name=getattr(tool_inst, "name", bare))
+        for k, tool_inst in self._tools.items():
+            if getattr(tool_inst, "name", "").lower() == bare:
                 return self.registry.register(tool_inst, name=getattr(tool_inst, "name", k))
         return None
 

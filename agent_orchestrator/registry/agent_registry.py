@@ -271,8 +271,33 @@ class AgentRegistry:
         return loaded
 
     def get(self, name: str) -> Optional[AgentManifest]:
-        """Lookup an agent manifest by name (case-insensitive)."""
-        return self._agents.get(name.upper().strip())
+        """Lookup an agent manifest by name (case-insensitive with alias and variant resolution)."""
+        if not name or not isinstance(name, str):
+            return None
+        key = name.upper().strip()
+        if key in self._agents:
+            return self._agents[key]
+        clean_key = re.sub(r"[-_]AGENT$", "", key)
+        if clean_key in self._agents:
+            return self._agents[clean_key]
+        aliases = {
+            "SPEC": "SPECIFICATION",
+            "ARCH": "ARCHITECTURE",
+            "PLAN": "PLANNER",
+            "TEST": "TESTER",
+            "CODE": "CODER",
+            "REVIEW": "REVIEWER",
+            "DOC": "DOCUMENTER",
+            "DOCS": "DOCUMENTER",
+            "SEC": "SECURITY_AUDITOR",
+            "SECURITY": "SECURITY_AUDITOR",
+        }
+        if clean_key in aliases and aliases[clean_key] in self._agents:
+            return self._agents[aliases[clean_key]]
+        for k, v in self._agents.items():
+            if k.lower() == name.lower().strip() or getattr(v, "name", "").lower() == name.lower().strip():
+                return v
+        return None
 
     def list_agents(self, category: Optional[str] = None) -> List[AgentManifest]:
         """Lists all registered agents, optionally filtered by category."""

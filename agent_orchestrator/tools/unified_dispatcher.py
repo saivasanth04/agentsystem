@@ -7,7 +7,7 @@ and adaptive fallback routing across heterogeneous tool providers.
 import json
 import logging
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Set, Union
 
 from ..mcp.circuit_breaker import CircuitState
 from ..mcp.manager import MCPManager
@@ -47,16 +47,29 @@ class UnifiedToolDispatcher:
                 logger.warning(f"Failed to initialize CapabilityFallbackEngine: {e}")
                 self.fallback_engine = None
 
-        # Agent role to MCP server mapping
+        # Agent role to MCP server mapping (supports short and canonical names)
         self._agent_mcp_permissions: Dict[str, List[str]] = {
-            "TASKORCHESTRATOR": ["mcp-server-memory"],
-            "PLANNER": ["mcp-server-filesystem", "mcp-server-git", "mcp-server-memory"],
-            "SPECIFICATION": ["mcp-server-filesystem", "mcp-server-memory"],
-            "ARCHITECTURE": ["mcp-server-filesystem", "mcp-server-memory"],
-            "CODER": ["mcp-server-filesystem", "mcp-server-git", "mcp-server-memory"],
-            "TESTER": ["mcp-server-filesystem", "mcp-server-terminal"],
-            "REVIEWER": ["mcp-server-filesystem", "mcp-server-git", "mcp-server-memory"],
+            "TASKORCHESTRATOR": ["memory", "mcp-server-memory", "sqlite", "mcp-server-sqlite", "claude-flow"],
+            "PLANNER": ["filesystem", "mcp-server-filesystem", "git", "mcp-server-git", "memory", "mcp-server-memory", "fetch", "mcp-server-fetch"],
+            "SPECIFICATION": ["filesystem", "mcp-server-filesystem", "memory", "mcp-server-memory", "fetch", "mcp-server-fetch", "brave-search"],
+            "ARCHITECTURE": ["filesystem", "mcp-server-filesystem", "memory", "mcp-server-memory"],
+            "CODER": ["filesystem", "mcp-server-filesystem", "git", "mcp-server-git", "memory", "mcp-server-memory", "terminal", "mcp-server-terminal"],
+            "TESTER": ["filesystem", "mcp-server-filesystem", "terminal", "mcp-server-terminal", "docker-mcp"],
+            "REVIEWER": ["filesystem", "mcp-server-filesystem", "git", "mcp-server-git", "memory", "mcp-server-memory", "semgrep-mcp"],
         }
+
+    def _get_resolved_allowed_servers(self, agent_name: Optional[str]) -> Set[str]:
+        agent_clean = (agent_name or "").upper().strip()
+        allowed = self._agent_mcp_permissions.get(agent_clean, [])
+        resolved_set = set()
+        for s in allowed:
+            resolved_set.add(s)
+            resolved_set.add(s.lower())
+            if self.mcp_manager and hasattr(self.mcp_manager, "_resolve_server_name"):
+                res = self.mcp_manager._resolve_server_name(s)
+                resolved_set.add(res)
+                resolved_set.add(res.lower())
+        return resolved_set
 
     def get_schemas(self, agent_name: Optional[str] = None) -> List[Dict[str, Any]]:
         """
@@ -76,13 +89,13 @@ class UnifiedToolDispatcher:
                 schemas.append(s)
 
         # 2. Add MCP Tools schemas with health filtering (Unknown callers receive no MCP schemas)
-        agent_clean = (agent_name or "").upper().strip()
-        allowed_servers = self._agent_mcp_permissions.get(agent_clean, [])
+        resolved_allowed = self._get_resolved_allowed_servers(agent_name)
 
-        if allowed_servers and self.mcp_manager:
+        if resolved_allowed and self.mcp_manager:
             for server_info in self.mcp_manager.discover_servers():
                 s_name = server_info["server_name"]
-                if s_name not in allowed_servers:
+                s_res = self.mcp_manager._resolve_server_name(s_name) if hasattr(self.mcp_manager, "_resolve_server_name") else s_name
+                if s_name not in resolved_allowed and s_res not in resolved_allowed and s_name.lower() not in resolved_allowed:
                     continue
 
                 health_status = self.mcp_manager.get_server_health_status(s_name)
@@ -118,15 +131,17 @@ class UnifiedToolDispatcher:
         Returns tool items accessible to the agent (builtin tools + healthy MCP tools).
         """
         tools = list(self.builtin_registry.get_tools_for_agent(agent_name))
-        agent_clean = agent_name.upper().strip()
-        allowed_servers = self._agent_mcp_permissions.get(agent_clean, [])
+        resolved_allowed = self._get_resolved_allowed_servers(agent_name)
 
         if self.mcp_manager:
-            for s_name in allowed_servers:
-                health_status = self.mcp_manager.get_server_health_status(s_name)
-                if health_status != "UNHEALTHY":
-                    mcp_tools = self.mcp_manager.discover_tools(server_name=s_name)
-                    tools.extend(mcp_tools)
+            for server_info in self.mcp_manager.discover_servers():
+                s_name = server_info["server_name"]
+                s_res = self.mcp_manager._resolve_server_name(s_name) if hasattr(self.mcp_manager, "_resolve_server_name") else s_name
+                if s_name in resolved_allowed or s_res in resolved_allowed or s_name.lower() in resolved_allowed:
+                    health_status = self.mcp_manager.get_server_health_status(s_name)
+                    if health_status != "UNHEALTHY":
+                        mcp_tools = self.mcp_manager.discover_tools(server_name=s_name)
+                        tools.extend(mcp_tools)
         return tools
 
     def call_tool(
@@ -232,8 +247,9 @@ class UnifiedToolDispatcher:
                         if isinstance(s_data, dict):
                             s_data = UntrustedToolPayload.sanitize(clean_name, s_data, provenance=ToolProvenance.EXTERNAL_MCP)
                         return {
-                            "output": combined_text or s_data or "Executed successfully",
+                            "output": combined_text or s_data or ("Executed successfully" if not mcp_res.isError else "MCP Tool Execution Failed"),
                             "data": s_data,
+                            "error": combined_text if mcp_res.isError else None,
                             "success": not mcp_res.isError,
                             "is_mcp": True,
                             "server": resolved_server,
@@ -258,16 +274,28 @@ class UnifiedToolDispatcher:
                     attributes={"tool_name": clean_name},
                 ) as mcp_span:
                     mcp_res = self.mcp_manager.call_tool(clean_name, arguments)
+                    from ..security.trust_boundaries import UntrustedToolPayload, ToolProvenance
+                    text_parts = [c.get("text", "") for c in mcp_res.content if isinstance(c, dict)]
+                    out_text = "\n".join(text_parts) if text_parts else ""
+                    out_data = mcp_res.structured_data
+                    if isinstance(out_data, dict):
+                        out_data = UntrustedToolPayload.sanitize(clean_name, out_data, provenance=ToolProvenance.EXTERNAL_MCP)
                     if not mcp_res.isError:
                         mcp_span.set_status(SpanStatus.OK)
-                        from ..security.trust_boundaries import UntrustedToolPayload, ToolProvenance
-                        text_parts = [c.get("text", "") for c in mcp_res.content if isinstance(c, dict)]
-                        out_data = mcp_res.structured_data
-                        if isinstance(out_data, dict):
-                            out_data = UntrustedToolPayload.sanitize(clean_name, out_data, provenance=ToolProvenance.EXTERNAL_MCP)
                         return {
-                            "output": "\n".join(text_parts) or out_data,
+                            "output": out_text or out_data or "Executed successfully",
+                            "data": out_data,
                             "success": True,
+                            "is_mcp": True,
+                            "_provenance": ToolProvenance.EXTERNAL_MCP,
+                        }
+                    else:
+                        mcp_span.set_status(SpanStatus.ERROR, "MCP tool error")
+                        return {
+                            "output": out_text or out_data or "MCP Tool Execution Failed",
+                            "error": out_text or "MCP Tool Execution Failed",
+                            "data": out_data,
+                            "success": False,
                             "is_mcp": True,
                             "_provenance": ToolProvenance.EXTERNAL_MCP,
                         }
@@ -643,7 +671,26 @@ class UnifiedToolDispatcher:
                 )
         return reports
 
+    def get_tools_for_agent(self, agent_name: Optional[str] = None) -> List[Any]:
+        """Returns tools list for a given agent role from the builtin registry."""
+        if hasattr(self.builtin_registry, "get_tools_for_agent"):
+            return self.builtin_registry.get_tools_for_agent(agent_name)
+        return []
+
+    def get_all_tools(self) -> List[Any]:
+        """Returns all registered tools from the builtin registry."""
+        if hasattr(self.builtin_registry, "get_all_tools"):
+            return self.builtin_registry.get_all_tools()
+        return []
+
+    def __getattr__(self, name: str) -> Any:
+        """Forward missing attributes/methods transparently to the underlying builtin registry."""
+        if "builtin_registry" in self.__dict__ and hasattr(self.builtin_registry, name):
+            return getattr(self.builtin_registry, name)
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
     def close(self) -> None:
         """Close underlying MCP manager."""
         if self.mcp_manager:
             self.mcp_manager.close()
+

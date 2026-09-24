@@ -670,7 +670,7 @@ class TaskDAG:
         with self._lock:
             ready: List[ExecutableTask] = []
             for task in self._tasks.values():
-                if task.state in (TaskState.PENDING, TaskState.READY):
+                if task.state in (TaskState.PENDING, TaskState.READY, TaskState.BLOCKED):
                     deps_satisfied = True
                     has_failed_dep = False
                     has_skipped_dep = False
@@ -907,6 +907,7 @@ class TaskDAG:
         remediation_task: ExecutableTask,
         failed_task_id: Optional[str] = None,
         invalidate_downstream: bool = False,
+        terminal_task_id: Optional[str] = None,
     ):
         """
         Dynamically grafts a remediation task into the DAG.
@@ -914,6 +915,7 @@ class TaskDAG:
         If invalidate_downstream is True, prunes all downstream tasks of failed_task_id
         to prevent executing stale subtasks against the new remediation architecture.
         """
+        target_replacement_id = terminal_task_id or remediation_task.task_id
         with self._lock:
             if failed_task_id and failed_task_id in self._tasks:
                 failed_task = self._tasks[failed_task_id]
@@ -931,7 +933,7 @@ class TaskDAG:
                     for task in self._tasks.values():
                         if failed_task_id in task.dependencies:
                             task.dependencies = [
-                                remediation_task.task_id if d == failed_task_id else d
+                                target_replacement_id if d == failed_task_id else d
                                 for d in task.dependencies
                             ]
                             if task.state == TaskState.BLOCKED:

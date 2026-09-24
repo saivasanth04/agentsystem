@@ -187,20 +187,6 @@ class EpistemicReplanner:
                 created_tasks.append(task_obj)
 
             if created_tasks:
-                # Wire dependencies if root task has no deps and there was a failed task
-                first_task = created_tasks[0]
-                failed_primary = failed_ids[0] if failed_ids else None
-                task_dag.inject_remediation_task(
-                    first_task,
-                    failed_task_id=failed_primary,
-                    invalidate_downstream=is_architectural_failure,
-                )
-                injected_tasks.append(first_task)
-
-                for subsequent in created_tasks[1:]:
-                    task_dag.add_task(subsequent)
-                    injected_tasks.append(subsequent)
-
                 # Ensure terminal verification task is present
                 has_verification = any("test" in t.objective.lower() or "verify" in t.objective.lower() for t in created_tasks)
                 if not has_verification:
@@ -219,8 +205,34 @@ class EpistemicReplanner:
                         permissions=TaskPermissions(allowed_write_paths=["*"]),
                         state=TaskState.PENDING,
                     )
-                    task_dag.add_task(verify_task)
-                    injected_tasks.append(verify_task)
+                    created_tasks.append(verify_task)
+
+                terminal_remediation_task = created_tasks[-1]
+                first_task = created_tasks[0]
+                failed_primary = failed_ids[0] if failed_ids else None
+                task_dag.inject_remediation_task(
+                    first_task,
+                    failed_task_id=failed_primary,
+                    invalidate_downstream=is_architectural_failure,
+                    terminal_task_id=terminal_remediation_task.task_id,
+                )
+                injected_tasks.append(first_task)
+
+                for subsequent in created_tasks[1:]:
+                    task_dag.add_task(subsequent)
+                    injected_tasks.append(subsequent)
+
+                # If there were multiple failed tasks, retarget their downstream dependencies to terminal remediation task as well
+                if len(failed_ids) > 1 and not is_architectural_failure:
+                    for extra_failed_id in failed_ids[1:]:
+                        for t in task_dag.list_tasks():
+                            if extra_failed_id in t.dependencies:
+                                t.dependencies = [
+                                    terminal_remediation_task.task_id if d == extra_failed_id else d
+                                    for d in t.dependencies
+                                ]
+                                if t.state == TaskState.BLOCKED:
+                                    t.state = TaskState.PENDING
 
         if not injected_tasks:
             # Sane default baseline remediation pair (100% backward compatibility)
@@ -274,9 +286,21 @@ class EpistemicReplanner:
                 remediation_task,
                 failed_task_id=failed_primary,
                 invalidate_downstream=is_architectural_failure,
+                terminal_task_id=verify_task.task_id,
             )
             task_dag.add_task(verify_task)
             injected_tasks.extend([remediation_task, verify_task])
+
+            if len(failed_ids) > 1 and not is_architectural_failure:
+                for extra_failed_id in failed_ids[1:]:
+                    for t in task_dag.list_tasks():
+                        if extra_failed_id in t.dependencies:
+                            t.dependencies = [
+                                verify_task.task_id if d == extra_failed_id else d
+                                for d in t.dependencies
+                            ]
+                            if t.state == TaskState.BLOCKED:
+                                t.state = TaskState.PENDING
 
         # 8. Can tasks execute in parallel?
         # Partition injected tasks by dependency waves

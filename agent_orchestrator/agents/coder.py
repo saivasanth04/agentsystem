@@ -2,7 +2,7 @@
 Coder Agent: Writes and edits code using WriteFileTool, ReadFileTool, ASTSyntaxCheckerTool, RegexGrepTool, and mcp-server-filesystem.
 """
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from .base import BaseAgent
 from ..state import OrchestratorState
 
@@ -16,7 +16,10 @@ class CoderAgent(BaseAgent):
         tool_registry=None,
         skill_registry=None,
         mcp_client=None,
+        message_bus=None,
+        approval_gate=None,
         enforce_react: bool = False,
+        **kwargs: Any,
     ):
         super().__init__(
             name="CODER",
@@ -27,10 +30,21 @@ class CoderAgent(BaseAgent):
             tool_registry=tool_registry,
             skill_registry=skill_registry,
             mcp_client=mcp_client,
+            message_bus=message_bus,
+            approval_gate=approval_gate,
+            **kwargs,
         )
         self.enforce_react = enforce_react
 
-    def execute(self, state: OrchestratorState, active_skills: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
+    def execute(self, state: Union[OrchestratorState, Dict[str, Any]], active_skills: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
+        if isinstance(state, dict) or state is None:
+            dict_state = state or {}
+            req = dict_state.get("user_request") or dict_state.get("goal") or "Implement code"
+            state_obj = OrchestratorState(user_request=req)
+            for k, v in dict_state.items():
+                if hasattr(state_obj, k):
+                    setattr(state_obj, k, v)
+            state = state_obj
         task_info = kwargs.get("task_info") or {}
         replan_context = ""
         if state.replan_history:
@@ -283,7 +297,8 @@ class CoderAgent(BaseAgent):
 
         prompt = assembler.assemble(sections)
         system_prompt = self.build_system_prompt(active_skills=active_skills)
-        coder_tools = [t.name for t in self.tool_registry.get_tools_for_agent(self.name)]
+        raw_tools = self.tool_registry.get_tools_for_agent(self.name) if hasattr(self.tool_registry, "get_tools_for_agent") else []
+        coder_tools = [getattr(t, "name", str(t)) for t in raw_tools]
 
         state_store = kwargs.get("state_store")
         session_id = kwargs.get("session_id")

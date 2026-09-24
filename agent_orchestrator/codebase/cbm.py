@@ -409,19 +409,36 @@ class CodebaseMemory:
         traversal: str = "bfs",
     ) -> Dict[str, Any]:
         """
-        GraphRAG-style graph search: finds seed nodes via semantic/BM25 search,
+        GraphRAG-style graph search: finds seed nodes via semantic/BM25 search (with lexical fallback),
         traverses connected nodes via BFS or DFS up to max_tokens budget.
         """
         # 1. Semantic Seed Discovery
-        sem_results = self.semantic_index.search(query, top_k=5)
+        sem_results = []
+        if self.semantic_index and hasattr(self.semantic_index, "search"):
+            try:
+                sem_results = self.semantic_index.search(query, top_k=5)
+            except Exception:
+                sem_results = []
+
         seed_nodes: Set[str] = set()
 
         for hit in sem_results:
             sym_name = hit.get("symbol_name", "")
             fp = hit.get("filepath", "")
             for nid, node in self.nodes.items():
-                if node.label == sym_name or (node.kind == "file" and node.filepath == fp):
+                if (sym_name and node.label.lower() == sym_name.lower()) or (fp and node.kind == "file" and node.filepath == fp):
                     seed_nodes.add(nid)
+
+        # Lexical Fallback Seed Discovery if semantic hits are empty or sparse
+        if len(seed_nodes) < 3:
+            q_terms = [t.lower() for t in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", query) if len(t) > 2]
+            for nid, node in self.nodes.items():
+                label_l = node.label.lower()
+                fp_l = node.filepath.lower()
+                if any(term in label_l or term in fp_l for term in q_terms):
+                    seed_nodes.add(nid)
+                    if len(seed_nodes) >= 8:
+                        break
 
         if not seed_nodes:
             return {
@@ -442,36 +459,36 @@ class CodebaseMemory:
             while stack:
                 curr_id = stack.pop()
                 for tgt_id, rel, weight in self.adj_list.get(curr_id, []):
-                    traversed_edges.append({"source": curr_id, "target": tgt_id, "relation": rel})
+                    traversed_edges.append({"source": curr_id, "target": tgt_id, "relation": rel, "weight": weight})
                     if tgt_id not in visited and tgt_id in self.nodes:
                         visited.add(tgt_id)
                         traversed_nodes.append(self.nodes[tgt_id])
                         stack.append(tgt_id)
                 for src_id, rel, weight in self.reverse_adj_list.get(curr_id, []):
-                    traversed_edges.append({"source": src_id, "target": curr_id, "relation": rel})
+                    traversed_edges.append({"source": src_id, "target": curr_id, "relation": rel, "weight": weight})
                     if src_id not in visited and src_id in self.nodes:
                         visited.add(src_id)
                         traversed_nodes.append(self.nodes[src_id])
                         stack.append(src_id)
-                if len(traversed_nodes) >= 20:
+                if len(traversed_nodes) >= 30:
                     break
         else:  # BFS
             queue = deque(seed_nodes)
             while queue:
                 curr_id = queue.popleft()
                 for tgt_id, rel, weight in self.adj_list.get(curr_id, []):
-                    traversed_edges.append({"source": curr_id, "target": tgt_id, "relation": rel})
+                    traversed_edges.append({"source": curr_id, "target": tgt_id, "relation": rel, "weight": weight})
                     if tgt_id not in visited and tgt_id in self.nodes:
                         visited.add(tgt_id)
                         traversed_nodes.append(self.nodes[tgt_id])
                         queue.append(tgt_id)
                 for src_id, rel, weight in self.reverse_adj_list.get(curr_id, []):
-                    traversed_edges.append({"source": src_id, "target": curr_id, "relation": rel})
+                    traversed_edges.append({"source": src_id, "target": curr_id, "relation": rel, "weight": weight})
                     if src_id not in visited and src_id in self.nodes:
                         visited.add(src_id)
                         traversed_nodes.append(self.nodes[src_id])
                         queue.append(src_id)
-                if len(traversed_nodes) >= 20:
+                if len(traversed_nodes) >= 30:
                     break
 
         # 3. Format Output within Budget
@@ -503,35 +520,92 @@ class CodebaseMemory:
         }
 
     def get_symbol_neighbors(self, symbol_name: str, depth: int = 1) -> Dict[str, Any]:
-        """Retrieves 1-2 hop callers, callees, and interfaces for a specific symbol."""
-        sym_res = self.code_graph.find_symbol(symbol_name)
+        """
+        Retrieves multi-hop (1 to N hop) callers, callees, and interfaces for a specific symbol or file.
+        Tracks traversal depth/distance for each neighbor.
+        """
+        clean_name = symbol_name.strip()
+        matched_node_ids: List[str] = []
+
+        # Try finding exact symbol in code_graph
+        sym_res = self.code_graph.find_symbol(clean_name)
         symbols = sym_res.get("symbols", [])
-        if not symbols:
-            return {"symbol": symbol_name, "found": False, "neighbors": [], "success": False}
+        for s in symbols:
+            nid = f"sym:{s['qualified_name']}"
+            if nid in self.nodes:
+                matched_node_ids.append(nid)
 
-        primary = symbols[0]
-        node_id = f"sym:{primary['qualified_name']}"
+        # Also check file nodes or node label exact matches
+        if not matched_node_ids:
+            for nid, node in self.nodes.items():
+                if node.label.lower() == clean_name.lower() or nid.lower() == f"sym:{clean_name.lower()}" or nid.lower() == f"file:{clean_name.lower()}":
+                    matched_node_ids.append(nid)
 
-        callers = []
-        callees = []
+        if not matched_node_ids:
+            # Substring match
+            for nid, node in self.nodes.items():
+                if clean_name.lower() in node.label.lower() or clean_name.lower() in node.filepath.lower():
+                    matched_node_ids.append(nid)
+                    if len(matched_node_ids) >= 5:
+                        break
 
-        # Downstream callees
-        for tgt_id, rel, _ in self.adj_list.get(node_id, []):
-            if tgt_id in self.nodes:
-                callees.append(self.nodes[tgt_id].to_dict())
+        if not matched_node_ids:
+            return {"symbol": symbol_name, "found": False, "neighbors": [], "callers": [], "callees": [], "success": False}
 
-        # Upstream callers
-        for src_id, rel, _ in self.reverse_adj_list.get(node_id, []):
-            if src_id in self.nodes:
-                callers.append(self.nodes[src_id].to_dict())
+        primary_nid = matched_node_ids[0]
+        primary_node = self.nodes.get(primary_nid)
+        max_d = max(1, min(depth, 5))
+
+        # Multi-Hop Downstream Callees / Dependencies BFS
+        callees: List[Dict[str, Any]] = []
+        visited_callees: Set[str] = set(matched_node_ids)
+        callee_queue: deque = deque([(nid, 1) for nid in matched_node_ids])
+
+        while callee_queue:
+            curr_id, d = callee_queue.popleft()
+            if d > max_d:
+                continue
+            for tgt_id, rel, weight in self.adj_list.get(curr_id, []):
+                if tgt_id in self.nodes:
+                    node_data = self.nodes[tgt_id].to_dict()
+                    node_data["hop"] = d
+                    node_data["relation"] = rel
+                    node_data["weight"] = weight
+                    node_data["from_node"] = curr_id
+                    callees.append(node_data)
+                    if tgt_id not in visited_callees:
+                        visited_callees.add(tgt_id)
+                        callee_queue.append((tgt_id, d + 1))
+
+        # Multi-Hop Upstream Callers / Dependents BFS
+        callers: List[Dict[str, Any]] = []
+        visited_callers: Set[str] = set(matched_node_ids)
+        caller_queue: deque = deque([(nid, 1) for nid in matched_node_ids])
+
+        while caller_queue:
+            curr_id, d = caller_queue.popleft()
+            if d > max_d:
+                continue
+            for src_id, rel, weight in self.reverse_adj_list.get(curr_id, []):
+                if src_id in self.nodes:
+                    node_data = self.nodes[src_id].to_dict()
+                    node_data["hop"] = d
+                    node_data["relation"] = rel
+                    node_data["weight"] = weight
+                    node_data["to_node"] = curr_id
+                    callers.append(node_data)
+                    if src_id not in visited_callers:
+                        visited_callers.add(src_id)
+                        caller_queue.append((src_id, d + 1))
 
         return {
             "symbol": symbol_name,
-            "qualified_name": primary["qualified_name"],
-            "filepath": primary["filepath"],
-            "line": primary["start_line"],
-            "signature": primary["signature"],
-            "docstring": primary["docstring"],
+            "depth": max_d,
+            "qualified_name": primary_node.id.replace("sym:", "") if primary_node else symbol_name,
+            "filepath": primary_node.filepath if primary_node else "",
+            "line": primary_node.line if primary_node else 1,
+            "signature": primary_node.signature if primary_node else "",
+            "docstring": primary_node.docstring if primary_node else "",
             "callers": callers,
             "callees": callees,
             "total_callers": len(callers),
@@ -539,6 +613,26 @@ class CodebaseMemory:
             "found": True,
             "success": True,
         }
+
+    def find_related_symbols(self, symbol_name: str, max_hops: int = 2) -> List[Dict[str, Any]]:
+        """
+        Traverses multi-hop relationships across calls, reverse calls, defines, and imports
+        to return connected symbols within max_hops distance.
+        """
+        neighbors_res = self.get_symbol_neighbors(symbol_name=symbol_name, depth=max_hops)
+        if not neighbors_res.get("found"):
+            return []
+
+        related: List[Dict[str, Any]] = []
+        seen_ids = set()
+
+        for item in neighbors_res.get("callers", []) + neighbors_res.get("callees", []):
+            item_id = item.get("id")
+            if item_id and item_id not in seen_ids and item.get("kind") != "file":
+                seen_ids.add(item_id)
+                related.append(item)
+
+        return related
 
     def get_architecture_slice(self, target_file: str) -> Dict[str, Any]:
         """Retrieves architectural layer, framework conventions, and entrypoints for a target file."""

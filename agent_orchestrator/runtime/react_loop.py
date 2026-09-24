@@ -150,6 +150,7 @@ class ReActAgentLoop:
         self.llm = llm
         self.tool_registry = tool_registry
         self.max_turns = max_turns
+        self.on_step = on_step_callback or kwargs.get("on_step") or (lambda stage, payload: None)
         if approval_gate is not None:
             self.approval_gate = approval_gate
         else:
@@ -328,7 +329,31 @@ class ReActAgentLoop:
             schemas = []
 
         if available_tools:
-            schemas = [s for s in schemas if s.get("function", {}).get("name") in available_tools]
+            avail_set = set()
+            for t in available_tools:
+                t_str = str(t).strip()
+                avail_set.add(t_str)
+                avail_set.add(t_str.lower())
+                bare = t_str.split("__")[-1]
+                if bare.startswith("mcp_"):
+                    bare = bare[4:]
+                avail_set.add(bare)
+                avail_set.add(bare.lower())
+
+            filtered_schemas = []
+            for s in schemas:
+                fn_name = s.get("function", {}).get("name", "")
+                fn_bare = fn_name.split("__")[-1]
+                if fn_bare.startswith("mcp_"):
+                    fn_bare = fn_bare[4:]
+                if (
+                    fn_name in avail_set
+                    or fn_name.lower() in avail_set
+                    or fn_bare in avail_set
+                    or fn_bare.lower() in avail_set
+                ):
+                    filtered_schemas.append(s)
+            schemas = filtered_schemas
 
         history_events: List[Dict[str, Any]] = []
         tools_used: Set[str] = set()
@@ -1198,7 +1223,8 @@ class ReActAgentLoop:
                                 "terminal tests, or provide verification proof in complete_task. Please verify your work before concluding."
                             )
                             self.on_step("VERIFICATION_PROOF_REQUIRED", {"turn": turn, "reason": err_feedback})
-                            messages.append({"role": "user", "content": err_feedback})
+                            # Update observation content for complete_task tool response
+                            messages[-1]["content"] = TrustBoundaryEnforcer.wrap_tool_observation("complete_task", {"success": False, "error": err_feedback}, provenance=ToolProvenance.INTERNAL_CONTROL)
                             observations.append(ObservationRecord(
                                 turn=turn,
                                 tool_name="complete_task",
@@ -1221,7 +1247,7 @@ class ReActAgentLoop:
                         if val_report and not val_report.is_valid and turn < effective_max_turns:
                             self.on_step("VALIDATION_ERROR", {"turn": turn, "errors": val_report.errors})
                             err_feedback = DeliverableValidator.format_error_feedback(val_report)
-                            messages.append({"role": "user", "content": err_feedback})
+                            messages[-1]["content"] = TrustBoundaryEnforcer.wrap_tool_observation("complete_task", {"success": False, "error": err_feedback, "validation_errors": val_report.errors}, provenance=ToolProvenance.INTERNAL_CONTROL)
                             observations.append(ObservationRecord(
                                 turn=turn,
                                 tool_name="complete_task",
@@ -1252,7 +1278,7 @@ class ReActAgentLoop:
                                 "Reflect on these questions and provide your verified, refined final deliverable (or make any necessary tool adjustments)."
                             )
                             self.on_step("SELF_REFLECTION", {"turn": turn, "prompt": ref_prompt})
-                            messages.append({"role": "user", "content": ref_prompt})
+                            messages[-1]["content"] = TrustBoundaryEnforcer.wrap_tool_observation("complete_task", {"status": "SELF_REFLECTION_REQUIRED", "prompt": ref_prompt}, provenance=ToolProvenance.INTERNAL_CONTROL)
                             observations.append(ObservationRecord(
                                 turn=turn,
                                 tool_name="self_reflection",
