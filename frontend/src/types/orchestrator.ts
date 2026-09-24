@@ -15,7 +15,7 @@ export type TaskStatus =
 
 export type ReviewVerdict = 'PASS' | 'FAIL' | 'UNDECIDED';
 
-export type ModelTier = 'FAST' | 'BALANCED' | 'FRONTIER' | 'CODING' | 'REASONING' | 'FALLBACK';
+export type ModelTier = 'auto' | 'fast' | 'smart' | 'coder' | 'FAST' | 'BALANCED' | 'FRONTIER' | 'CODING' | 'REASONING' | 'FALLBACK';
 
 export interface WorkspaceInfo {
   path: string;

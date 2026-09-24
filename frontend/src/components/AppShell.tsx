@@ -18,7 +18,10 @@ import {
   Folder,
   Terminal,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Server,
+  TrendingUp,
+  Sliders,
 } from 'lucide-react';
 import { orchestratorWS } from '../api/websocket';
 import { orchestratorApi } from '../api/client';
@@ -106,6 +109,15 @@ export const AppShell: React.FC<AppShellProps> = ({
     { route: '/settings', label: 'Settings & MCP', icon: Settings },
   ];
 
+  const gatewayNavItems = [
+    { route: '/gateway', label: 'Gateway Overview', icon: Server },
+    { route: '/gateway/providers', label: 'Providers', icon: Boxes },
+    { route: '/gateway/models', label: 'Live Models', icon: Bot },
+    { route: '/gateway/inspector', label: 'Routing Inspector', icon: Activity },
+    { route: '/gateway/analytics', label: 'Analytics', icon: TrendingUp },
+    { route: '/gateway/settings', label: 'Gateway Settings', icon: Sliders },
+  ];
+
   const handleGlobalCancel = async () => {
     if (activeSessionId && confirm(`Are you sure you want to cancel the active session (${activeSessionId})?`)) {
       try {
@@ -125,9 +137,9 @@ export const AppShell: React.FC<AppShellProps> = ({
           isSidebarCollapsed ? 'w-16' : 'w-60'
         }`}
       >
-        <div>
+        <div className="overflow-y-auto">
           {/* Logo / Brand Header */}
-          <div className="h-14 flex items-center justify-between px-3.5 border-b border-slate-800">
+          <div className="h-14 flex items-center justify-between px-3.5 border-b border-slate-800 sticky top-0 bg-slate-900 z-10">
             {!isSidebarCollapsed && (
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 shrink-0">
@@ -146,24 +158,29 @@ export const AppShell: React.FC<AppShellProps> = ({
 
             <button
               onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors mx-auto"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors mx-auto cursor-pointer"
               title={isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
             >
               {isSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
             </button>
           </div>
 
-          {/* Navigation Links */}
-          <nav className="p-3 space-y-1">
+          {/* Core Orchestration Navigation */}
+          <div className="p-3 space-y-1">
+            {!isSidebarCollapsed && (
+              <div className="px-3 pt-1 pb-1.5 text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider">
+                Orchestration & Swarm
+              </div>
+            )}
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = currentRoute === item.route || (item.route !== '/' && currentRoute.startsWith(item.route));
+              const isActive = currentRoute === item.route || (item.route !== '/' && currentRoute === item.route);
 
               return (
                 <button
                   key={item.route}
                   onClick={() => navigate(item.route)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+                  className={`w-full flex items-center gap-3 px-3 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
                     isActive
                       ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-500/20 font-semibold'
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/70'
@@ -175,7 +192,39 @@ export const AppShell: React.FC<AppShellProps> = ({
                 </button>
               );
             })}
-          </nav>
+
+            {/* Enterprise Gateway Section */}
+            <div className="pt-3">
+              {!isSidebarCollapsed && (
+                <div className="px-3 pt-1 pb-1.5 text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center justify-between">
+                  <span>LiteLLM Gateway</span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/40">
+                    34+
+                  </span>
+                </div>
+              )}
+              {gatewayNavItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = currentRoute === item.route || (item.route !== '/' && currentRoute.startsWith(item.route));
+
+                return (
+                  <button
+                    key={item.route}
+                    onClick={() => navigate(item.route)}
+                    className={`w-full flex items-center gap-3 px-3 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                      isActive
+                        ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-500/20 font-semibold'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/70'
+                    } ${isSidebarCollapsed ? 'justify-center px-0' : ''}`}
+                    title={item.label}
+                  >
+                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                    {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         {/* Sidebar Footer */}

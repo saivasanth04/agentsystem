@@ -28,7 +28,7 @@ interface NewTaskPageProps {
 export const NewTaskPage: React.FC<NewTaskPageProps> = ({ navigate, onSessionLaunched }) => {
   const { activeWorkspace, openWorkspaceModal } = useWorkspace();
   const [userRequest, setUserRequest] = useState('');
-  const [modelTier, setModelTier] = useState<ModelTier>('BALANCED');
+  const [modelTier, setModelTier] = useState<ModelTier>('auto');
   const [roleOverrides, setRoleOverrides] = useState<Record<string, string>>({});
   const [maxReplanIterations, setMaxReplanIterations] = useState<number>(3);
   const [maxCostUsd, setMaxCostUsd] = useState<number>(5.0);

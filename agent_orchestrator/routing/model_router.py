@@ -124,11 +124,11 @@ class ModelRouter:
     """
 
     DEFAULT_MODELS: Dict[ModelTier, str] = {
-        ModelTier.CHEAP_FAST: "gpt-4o-mini",
-        ModelTier.CODING: "claude-3-5-sonnet",
-        ModelTier.REASONING: "o3-mini",
-        ModelTier.EMBEDDING: "text-embedding-3-small",
-        ModelTier.FALLBACK: "gpt-4o",
+        ModelTier.CHEAP_FAST: "fast",
+        ModelTier.CODING: "coder",
+        ModelTier.REASONING: "smart",
+        ModelTier.EMBEDDING: "auto",
+        ModelTier.FALLBACK: "auto",
     }
 
     def __init__(
@@ -164,20 +164,11 @@ class ModelRouter:
             self.tier_models[ModelTier.EMBEDDING] = os.getenv("EMBEDDING_MODEL")
 
     def _init_default_fallback_chains(self):
-        """Initializes sensible fallback chains for default tier models."""
-        fast = self.tier_models[ModelTier.CHEAP_FAST]
-        coding = self.tier_models[ModelTier.CODING]
-        reasoning = self.tier_models[ModelTier.REASONING]
-        fallback = self.tier_models[ModelTier.FALLBACK]
-
-        # Coding falls back to Fallback model, then Cheap model
-        self.fallback_chains[coding] = [fallback, fast]
-        # Reasoning falls back to Coding, then Fallback
-        self.fallback_chains[reasoning] = [coding, fallback]
-        # Fast falls back to Fallback
-        self.fallback_chains[fast] = [fallback]
-        # Fallback falls back to Coding
-        self.fallback_chains[fallback] = [coding]
+        """Initializes sensible fallback chains for logical modes."""
+        self.fallback_chains["coder"] = ["smart", "auto"]
+        self.fallback_chains["smart"] = ["coder", "auto"]
+        self.fallback_chains["fast"] = ["auto"]
+        self.fallback_chains["auto"] = ["coder", "fast"]
 
     def set_tier_model(self, tier: ModelTier, model_name: str):
         """Overrides the model mapped to a tier."""
@@ -196,13 +187,8 @@ class ModelRouter:
         attempt: int = 1,
     ) -> str:
         """
-        Dynamically selects the optimal model:
-        1. If explicit tier is provided, returns that tier's model.
-        2. If attempt >= 2, escalates to REASONING tier.
-        3. If complexity is CRITICAL_REASONING, selects REASONING tier.
-        4. If complexity is TRIVIAL, selects CHEAP_FAST tier.
-        5. If complexity is COMPLEX, selects REASONING (for planning/arch) or CODING.
-        6. Default: selects CODING or role-specific model.
+        Dynamically selects the logical execution mode:
+        - auto, fast, smart, coder
         """
         # 1. Explicit tier override
         if tier:
@@ -230,11 +216,7 @@ class ModelRouter:
             return self.get_tier_model(ModelTier.CODING)
 
         # 4. Standard complexity: route based on agent persona
-        if role_clean == "PLANNER":
-            return self.get_tier_model(ModelTier.REASONING)
-        elif role_clean in ("SPECIFICATION", "ARCHITECTURE"):
-            return self.get_tier_model(ModelTier.REASONING)
-        elif role_clean == "REVIEWER":
+        if role_clean in ("PLANNER", "SPECIFICATION", "ARCHITECTURE", "REVIEWER"):
             return self.get_tier_model(ModelTier.REASONING)
         elif role_clean in ("CODER", "TESTER"):
             return self.get_tier_model(ModelTier.CODING)
@@ -243,35 +225,33 @@ class ModelRouter:
 
     def resolve_model(self, model_or_tier: Optional[Union[str, ModelTier]]) -> str:
         """
-        Resolves an input parameter which might be a ModelTier, 'auto', None, or a model string.
+        Resolves an input parameter to one of the 4 logical modes: 'auto', 'fast', 'smart', 'coder'.
         """
-        if model_or_tier is None or model_or_tier == "auto" or model_or_tier == "":
-            return self.get_tier_model(ModelTier.CODING)
+        if model_or_tier is None or model_or_tier == "" or model_or_tier == "auto":
+            return "auto"
+
+        if isinstance(model_or_tier, str) and model_or_tier.lower() in ("auto", "fast", "smart", "coder"):
+            return model_or_tier.lower()
 
         if isinstance(model_or_tier, ModelTier):
             return self.get_tier_model(model_or_tier)
 
-        # Check if the string matches a ModelTier value
         for tier in ModelTier:
-            if model_or_tier.lower() in (tier.value, tier.name.lower()):
+            if str(model_or_tier).lower() in (tier.value, tier.name.lower()):
                 return self.get_tier_model(tier)
 
         return str(model_or_tier)
 
     def get_fallback(self, current_model: str, error: Optional[Exception] = None) -> Optional[str]:
         """
-        Returns the next fallback model in the chain if one exists and differs from current_model.
+        Returns the next fallback logical mode in the chain.
         """
-        chain = self.fallback_chains.get(current_model, [])
+        chain = self.fallback_chains.get(current_model, ["auto"])
         for candidate in chain:
             if candidate and candidate != current_model:
                 return candidate
 
-        fallback_default = self.get_tier_model(ModelTier.FALLBACK)
-        if fallback_default != current_model:
-            return fallback_default
-
-        return None
+        return "auto"
 
 
 # Global singleton ModelRouter
