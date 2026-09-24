@@ -35,6 +35,7 @@ from agent_orchestrator.telemetry.telemetry_engine import TelemetryEngine
 from agent_orchestrator.tracing.tracer import Tracer
 from agent_orchestrator.runtime.event_bus import EventBus
 from agent_orchestrator.tools.workspace import WorkspaceManager
+from agent_orchestrator.runtime.project_runtime import ProjectRuntimeManager, ManagedRuntimeProcess
 
 logger = logging.getLogger("orchestrator.server")
 
@@ -67,11 +68,48 @@ budget_tracker = BudgetTracker()
 telemetry_engine = TelemetryEngine()
 tracer = Tracer()
 event_bus = EventBus()
+runtime_manager = ProjectRuntimeManager(state_store=state_store, event_bus=event_bus)
 
 # Active running orchestrators registry: session_id -> TaskOrchestrator instance
 active_orchestrators: Dict[str, TaskOrchestrator] = {}
 active_tasks: Dict[str, asyncio.Task] = {}
 orchestrator_lock = threading.Lock()
+
+
+def resolve_session_workspace(session_id: str) -> Path:
+    """
+    Authoritatively resolves the canonical workspace directory for a session.
+    Guarantees strict per-session boundary isolation across tools, terminals, diffs, checkpoints, and runtimes.
+    1. Checks active in-memory TaskOrchestrator.
+    2. Checks persisted SQLite session record (workspace_dir).
+    """
+    ws_path_str: Optional[str] = None
+    with orchestrator_lock:
+        orch = active_orchestrators.get(session_id)
+        if orch and hasattr(orch, "workspace") and orch.workspace:
+            ws_path_str = str(orch.workspace.root_dir)
+
+    if not ws_path_str:
+        state = state_store.load_state(session_id)
+        if state:
+            ws_path_str = getattr(state, "workspace_dir", None)
+        if not ws_path_str:
+            conn = state_store._get_connection()
+            row = conn.execute("SELECT workspace_dir FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
+            if row and row["workspace_dir"]:
+                ws_path_str = row["workspace_dir"]
+
+    if not ws_path_str:
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found or has no bound workspace.")
+
+    canonical_path = Path(ws_path_str).resolve()
+    if not canonical_path.exists() or not canonical_path.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bound workspace directory '{canonical_path}' for session '{session_id}' does not exist on disk."
+        )
+
+    return canonical_path
 
 # ---------------------------------------------------------------------------
 # WebSocket Real-Time Event Hub
@@ -221,6 +259,7 @@ class WorkspaceFileSaveRequest(BaseModel):
     filepath: str
     content: str
     workspace_path: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class WorkspaceFileCreateRequest(BaseModel):
@@ -228,12 +267,14 @@ class WorkspaceFileCreateRequest(BaseModel):
     is_directory: bool = False
     content: Optional[str] = ""
     workspace_path: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class WorkspaceFileRenameRequest(BaseModel):
     old_path: str
     new_path: str
     workspace_path: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class WorkspacePreflightRequest(BaseModel):
@@ -244,6 +285,12 @@ class WorkspacePreflightRequest(BaseModel):
 class TerminalRunRequest(BaseModel):
     command: str
     workspace_path: Optional[str] = None
+    session_id: Optional[str] = None
+
+
+class RuntimeStartRequest(BaseModel):
+    command: Optional[str] = None
+    port: Optional[int] = None
 
 
 class McpCallRequest(BaseModel):
@@ -257,8 +304,11 @@ class ContextPreviewRequest(BaseModel):
     user_request: str
 
 
-def _get_workspace(custom_path: Optional[str] = None) -> WorkspaceManager:
-    """Returns a WorkspaceManager instance scoped to the specified path or default workspace root."""
+def _get_workspace(custom_path: Optional[str] = None, session_id: Optional[str] = None) -> WorkspaceManager:
+    """Returns a WorkspaceManager instance scoped to the specified session_id, custom path, or default workspace root."""
+    if session_id and str(session_id).strip():
+        resolved = resolve_session_workspace(session_id)
+        return WorkspaceManager(root_dir=resolved)
     if custom_path and str(custom_path).strip():
         p = Path(custom_path).resolve()
         if p.exists() and p.is_dir():
@@ -597,11 +647,16 @@ async def launch_task(req: LaunchTaskRequest, background_tasks: BackgroundTasks)
                 payload={"session_id": session_id, "stage": stage, "message": msg, **(payload or {})},
             )
 
+        session_checkpoint_mgr = WorkspaceCheckpointManager(
+            workspace_dir=str(target_ws_dir),
+            artifact_store=artifact_store,
+        )
+
         orch = TaskOrchestrator(
             workspace=ws_instance,
             config=cfg,
             state_store=state_store,
-            checkpoint_manager=checkpoint_mgr,
+            checkpoint_manager=session_checkpoint_mgr,
             on_event_callback=_orch_on_event,
             event_bus=event_bus,
             telemetry_engine=telemetry_engine,
@@ -758,10 +813,13 @@ async def get_session_detail(session_id: str):
     if not state:
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found.")
     
+    session_ws = resolve_session_workspace(session_id)
+    session_checkpoint_mgr = WorkspaceCheckpointManager(workspace_dir=str(session_ws), artifact_store=artifact_store)
+
     raw_tasks = state_store.load_tasks(session_id)
     tasks_data = [_normalize_task_dict(t) for t in (raw_tasks or [])]
     artifacts_data = artifact_store.list_artifacts(session_id=session_id)
-    snapshots = checkpoint_mgr.list_snapshots()
+    snapshots = session_checkpoint_mgr.list_snapshots()
     session_snapshots = [s for s in snapshots if session_id in s]
 
     completed_cnt = sum(1 for t in tasks_data if str(t.get("state", "")).upper() in ("COMPLETED", "PASS"))
@@ -805,7 +863,7 @@ async def get_session_detail(session_id: str):
         "seed": repro.get("seed", 42),
         "python_version": repro.get("python_version", "3.11+"),
         "orchestrator_version": repro.get("orchestrator_version", "2.0.0"),
-        "workspace_path": getattr(state, "workspace_dir", None) or str(WORKSPACE_ROOT),
+        "workspace_path": str(session_ws),
         "git_branch": getattr(state, "git_branch", "main"),
         "git_commit": getattr(state, "git_commit", ""),
     }
@@ -858,7 +916,7 @@ async def get_session_detail(session_id: str):
         "created_at": state.created_at or datetime.now().isoformat(),
         "updated_at": state.updated_at or datetime.now().isoformat(),
         "duration_seconds": float(state.total_duration_seconds or 0.0),
-        "workspace_path": getattr(state, "workspace_dir", None) or str(WORKSPACE_ROOT),
+        "workspace_path": str(session_ws),
         "git_branch": getattr(state, "git_branch", "main"),
         "git_commit": getattr(state, "git_commit", ""),
         "reproducibility": repro_formatted,
@@ -874,7 +932,8 @@ async def get_session_detail(session_id: str):
 
 @app.delete("/api/sessions/{session_id}")
 async def delete_session(session_id: str):
-    """Cancels and permanently deletes a session and its associated storage."""
+    """Cancels and permanently deletes a session, its runtimes, and associated storage."""
+    runtime_manager.stop_session_runtimes(session_id)
     with orchestrator_lock:
         orch = active_orchestrators.get(session_id)
         if orch:
@@ -901,7 +960,8 @@ async def delete_session(session_id: str):
 
 @app.post("/api/sessions/{session_id}/cancel")
 async def cancel_session(session_id: str, req: Optional[ActionRequest] = None):
-    """Gracefully cancels an active orchestration run."""
+    """Gracefully cancels an active orchestration run and stops session runtimes."""
+    runtime_manager.stop_session_runtimes(session_id)
     cancel_reason = (req.reason if req and req.reason else "Cancelled via Console")
     with orchestrator_lock:
         orch = active_orchestrators.get(session_id)
@@ -923,16 +983,19 @@ async def cancel_session(session_id: str, req: Optional[ActionRequest] = None):
     return {"success": True, "message": f"Session '{session_id}' cancelled."}
 
 
-
 @app.post("/api/sessions/{session_id}/resume")
 async def resume_session(session_id: str):
-    """Resumes an interrupted or paused session from its latest SQLite checkpoint."""
+    """Resumes an interrupted or paused session from its latest SQLite checkpoint in its bound workspace."""
     recovered_state, dag, remaining = recovery_engine.recover_session(session_id)
     if not recovered_state:
         raise HTTPException(status_code=400, detail=f"Cannot recover session '{session_id}'.")
 
-    target_ws = Path(recovered_state.workspace_dir).resolve() if getattr(recovered_state, "workspace_dir", None) else WORKSPACE_ROOT
+    target_ws = resolve_session_workspace(session_id)
     ws_instance = WorkspaceManager(root_dir=target_ws)
+    session_checkpoint_mgr = WorkspaceCheckpointManager(
+        workspace_dir=str(target_ws),
+        artifact_store=artifact_store,
+    )
     cfg = OrchestratorConfig()
 
     def _orch_on_event(stage: str, msg: str, payload: Optional[Dict[str, Any]] = None):
@@ -946,7 +1009,7 @@ async def resume_session(session_id: str):
         workspace=ws_instance,
         config=cfg,
         state_store=state_store,
-        checkpoint_manager=checkpoint_mgr,
+        checkpoint_manager=session_checkpoint_mgr,
         on_event_callback=_orch_on_event,
         event_bus=event_bus,
         telemetry_engine=telemetry_engine,
@@ -962,18 +1025,22 @@ async def resume_session(session_id: str):
     with orchestrator_lock:
         active_tasks[session_id] = task
 
-    return {"success": True, "session_id": session_id, "status": "RUNNING", "remaining_tasks": len(remaining)}
+    return {"success": True, "session_id": session_id, "status": "RUNNING", "remaining_tasks": len(remaining), "workspace_path": str(target_ws)}
 
 
 @app.post("/api/sessions/{session_id}/rollback")
 async def rollback_session(session_id: str, req: ActionRequest):
-    """Rolls back the workspace files to a specified checkpoint snapshot."""
+    """Rolls back the workspace files to a specified checkpoint snapshot strictly within session workspace."""
     if not req.checkpoint_id:
         raise HTTPException(status_code=400, detail="checkpoint_id is required for rollback.")
     
-    res = checkpoint_mgr.rollback(req.checkpoint_id, workspace=workspace)
-    _on_event_bus_event("TRANSACTION_ROLLBACK", payload={"session_id": session_id, "checkpoint_id": req.checkpoint_id, "result": res})
-    return {"success": True, "rollback_result": res}
+    session_ws = resolve_session_workspace(session_id)
+    session_ws_mgr = WorkspaceManager(root_dir=session_ws)
+    session_checkpoint_mgr = WorkspaceCheckpointManager(workspace_dir=str(session_ws), artifact_store=artifact_store)
+
+    res = session_checkpoint_mgr.rollback(req.checkpoint_id, workspace=session_ws_mgr)
+    _on_event_bus_event("TRANSACTION_ROLLBACK", payload={"session_id": session_id, "checkpoint_id": req.checkpoint_id, "result": res, "workspace_path": str(session_ws)})
+    return {"success": True, "session_id": session_id, "workspace_path": str(session_ws), "rollback_result": res}
 
 
 # ---------------------------------------------------------------------------
@@ -1153,24 +1220,27 @@ async def get_session_verification(session_id: str):
 
 @app.get("/api/sessions/{session_id}/diff")
 async def get_session_diff(session_id: str):
-    """Returns modified workspace files, diffs, and agent blame metadata."""
-    state = state_store.load_state(session_id)
+    """Returns modified workspace files, diffs, and agent blame metadata for the session's bound workspace."""
+    session_ws = resolve_session_workspace(session_id)
+    session_ws_mgr = WorkspaceManager(root_dir=session_ws)
     diff_blocks = []
-    if hasattr(workspace, "get_uncommitted_changes"):
+    if hasattr(session_ws_mgr, "get_uncommitted_changes"):
         try:
-            uncommitted = workspace.get_uncommitted_changes()
+            uncommitted = session_ws_mgr.get_uncommitted_changes()
             for f in uncommitted.get("modified", []) + uncommitted.get("created", []):
-                content = workspace.read_file(f) or ""
+                content = session_ws_mgr.read_file(f) or ""
                 diff_blocks.append({
                     "filepath": f,
                     "status": "MODIFIED" if f in uncommitted.get("modified", []) else "CREATED",
                     "lines": len(content.splitlines()),
                     "content": content,
                 })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error computing diff for session {session_id}: {e}")
 
     return {
+        "session_id": session_id,
+        "workspace_path": str(session_ws),
         "files_changed": len(diff_blocks),
         "diff_blocks": diff_blocks,
     }
@@ -1442,15 +1512,19 @@ async def browse_workspace_directories(current_path: Optional[str] = None):
 
 
 @app.get("/api/workspace/files")
-async def get_workspace_files(path: Optional[str] = None):
+async def get_workspace_files(path: Optional[str] = None, session_id: Optional[str] = None):
     """Returns the complete recursive hierarchical file tree for the active workspace."""
-    target_p = Path(path).resolve() if path else WORKSPACE_ROOT
-    if not target_p.exists() or not target_p.is_dir():
-        target_p = WORKSPACE_ROOT
+    if session_id and str(session_id).strip():
+        target_p = resolve_session_workspace(session_id)
+    else:
+        target_p = Path(path).resolve() if path else WORKSPACE_ROOT
+        if not target_p.exists() or not target_p.is_dir():
+            target_p = WORKSPACE_ROOT
     
     tree = _build_file_tree(target_p, target_p, max_depth=6)
     return {
         "workspace_path": str(target_p),
+        "session_id": session_id,
         "project_name": target_p.name,
         "tree": tree,
         "total_top_level": len(tree),
@@ -1458,9 +1532,9 @@ async def get_workspace_files(path: Optional[str] = None):
 
 
 @app.get("/api/workspace/file")
-async def read_workspace_file(filepath: str = Query(...), workspace_path: Optional[str] = None):
+async def read_workspace_file(filepath: str = Query(...), workspace_path: Optional[str] = None, session_id: Optional[str] = None):
     """Safely reads the content and metadata of a file within the workspace."""
-    ws = _get_workspace(workspace_path)
+    ws = _get_workspace(workspace_path, session_id=session_id)
     try:
         content = ws.read_file(filepath)
         if content is None:
@@ -1486,7 +1560,7 @@ async def read_workspace_file(filepath: str = Query(...), workspace_path: Option
 @app.post("/api/workspace/file")
 async def save_workspace_file(req: WorkspaceFileSaveRequest):
     """Safely writes or updates content to a file in the workspace."""
-    ws = _get_workspace(req.workspace_path)
+    ws = _get_workspace(req.workspace_path, session_id=req.session_id)
     try:
         ws.write_file(req.filepath, req.content)
         full_path = ws.root_dir / req.filepath
@@ -1508,7 +1582,7 @@ async def save_workspace_file(req: WorkspaceFileSaveRequest):
 @app.post("/api/workspace/file/create")
 async def create_workspace_file_or_dir(req: WorkspaceFileCreateRequest):
     """Creates a new file or directory inside the workspace."""
-    ws = _get_workspace(req.workspace_path)
+    ws = _get_workspace(req.workspace_path, session_id=req.session_id)
     try:
         from agent_orchestrator.tools.workspace import safe_resolve_path
         target = safe_resolve_path(ws.root_dir, req.path)
@@ -1530,7 +1604,7 @@ async def create_workspace_file_or_dir(req: WorkspaceFileCreateRequest):
 @app.post("/api/workspace/file/rename")
 async def rename_workspace_file(req: WorkspaceFileRenameRequest):
     """Safely renames or moves a file/directory inside the workspace."""
-    ws = _get_workspace(req.workspace_path)
+    ws = _get_workspace(req.workspace_path, session_id=req.session_id)
     try:
         from agent_orchestrator.tools.workspace import safe_resolve_path
         old_target = safe_resolve_path(ws.root_dir, req.old_path)
@@ -1550,9 +1624,9 @@ async def rename_workspace_file(req: WorkspaceFileRenameRequest):
 
 
 @app.delete("/api/workspace/file")
-async def delete_workspace_file(filepath: str = Query(...), workspace_path: Optional[str] = None):
+async def delete_workspace_file(filepath: str = Query(...), workspace_path: Optional[str] = None, session_id: Optional[str] = None):
     """Safely deletes a file or empty directory inside the workspace."""
-    ws = _get_workspace(workspace_path)
+    ws = _get_workspace(workspace_path, session_id=session_id)
     try:
         from agent_orchestrator.tools.workspace import safe_resolve_path
         target = safe_resolve_path(ws.root_dir, filepath)
@@ -1671,7 +1745,7 @@ async def workspace_preflight_check(req: WorkspacePreflightRequest):
 @app.post("/api/terminal/run")
 async def run_terminal_command(req: TerminalRunRequest):
     """Executes a shell command inside the designated workspace directory."""
-    ws = _get_workspace(req.workspace_path)
+    ws = _get_workspace(req.workspace_path, session_id=req.session_id)
     cmd = req.command.strip()
     if not cmd:
         return {"stdout": "", "stderr": "Command is empty", "exit_code": 1, "duration_ms": 0}
@@ -1717,6 +1791,90 @@ async def run_terminal_command(req: TerminalRunRequest):
             "duration_ms": round((time.time() - start_time) * 1000.0, 1),
             "workspace_path": str(ws.root_dir),
         }
+
+
+# ---------------------------------------------------------------------------
+# 7.5 Project Runtime & Preview Lifecycle APIs
+# ---------------------------------------------------------------------------
+
+@app.post("/api/sessions/{session_id}/runtime/start")
+async def start_session_runtime(session_id: str, req: Optional[RuntimeStartRequest] = None):
+    """Starts or restarts the project's background dev server / application runtime within its bound workspace."""
+    session_ws = resolve_session_workspace(session_id)
+    cmd = req.command if req else None
+    port = req.port if req else None
+    try:
+        m_proc = runtime_manager.start_runtime(
+            session_id=session_id,
+            workspace_dir=session_ws,
+            custom_command=cmd,
+            requested_port=port,
+        )
+        return {
+            "success": True,
+            "session_id": session_id,
+            "workspace_path": str(session_ws),
+            "runtime": m_proc.to_dict(),
+        }
+    except Exception as e:
+        logger.error(f"Error starting runtime for session {session_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/sessions/{session_id}/runtime/{runtime_id}/stop")
+async def stop_session_runtime(session_id: str, runtime_id: str):
+    """Cleanly terminates the entire process tree for a session project runtime."""
+    success = runtime_manager.stop_runtime(runtime_id)
+    return {"success": success, "runtime_id": runtime_id, "session_id": session_id}
+
+
+@app.post("/api/sessions/{session_id}/runtime/{runtime_id}/restart")
+async def restart_session_runtime(session_id: str, runtime_id: str):
+    """Stops and restarts an existing project runtime."""
+    try:
+        m_proc = runtime_manager.restart_runtime(runtime_id)
+        return {
+            "success": True,
+            "session_id": session_id,
+            "runtime": m_proc.to_dict(),
+        }
+    except Exception as e:
+        logger.error(f"Error restarting runtime {runtime_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/sessions/{session_id}/runtime")
+async def get_session_runtime(session_id: str):
+    """Returns active and historical project runtimes for the specified session."""
+    resolve_session_workspace(session_id)
+    runtimes = runtime_manager.get_session_runtimes(session_id)
+    active = next((r for r in runtimes if r.get("status") in ("RUNNING", "STARTING", "HEALTHY", "PORT_DETECTED")), None)
+    return {
+        "session_id": session_id,
+        "runtimes": runtimes,
+        "active_runtime": active or (runtimes[0] if runtimes else None),
+    }
+
+
+@app.get("/api/sessions/{session_id}/runtime/{runtime_id}")
+async def get_runtime_detail(session_id: str, runtime_id: str):
+    """Returns details, status, port, and preview URL for a specific runtime."""
+    status = runtime_manager.get_runtime_status(runtime_id)
+    if not status:
+        raise HTTPException(status_code=404, detail=f"Runtime '{runtime_id}' not found.")
+    return {"runtime": status}
+
+
+@app.get("/api/sessions/{session_id}/runtime/{runtime_id}/logs")
+async def get_runtime_logs(session_id: str, runtime_id: str, tail: int = Query(default=200, ge=1, le=1000)):
+    """Returns buffered stdout/stderr logs from the project runtime process."""
+    logs = runtime_manager.get_runtime_logs(runtime_id, tail=tail)
+    return {
+        "runtime_id": runtime_id,
+        "session_id": session_id,
+        "logs": logs,
+        "count": len(logs),
+    }
 
 
 # ---------------------------------------------------------------------------

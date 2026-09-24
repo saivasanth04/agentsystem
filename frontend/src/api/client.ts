@@ -19,6 +19,8 @@ import {
   TerminalExecutionResult,
   McpServerInfo,
   ContextPreview,
+  ProjectRuntimeInfo,
+  ProjectRuntimeLog,
 } from '../types/orchestrator';
 
 const API_BASE = '/api';
@@ -68,46 +70,49 @@ export const orchestratorApi = {
     );
   },
 
-  getWorkspaceFiles: (path?: string, maxDepth: number = 4) => {
+  getWorkspaceFiles: (path?: string, maxDepth: number = 4, sessionId?: string) => {
     const params = new URLSearchParams();
     if (path) params.set('path', path);
     if (maxDepth) params.set('max_depth', maxDepth.toString());
+    if (sessionId) params.set('session_id', sessionId);
     const qs = params.toString() ? `?${params.toString()}` : '';
     return request<{ workspace_path: string; project_name: string; tree: FileTreeNode[]; total_top_level: number }>(
       `/workspace/files${qs}`
     );
   },
 
-  readWorkspaceFile: (filepath: string, workspacePath?: string) => {
+  readWorkspaceFile: (filepath: string, workspacePath?: string, sessionId?: string) => {
     const params = new URLSearchParams({ filepath });
     if (workspacePath) params.set('workspace_path', workspacePath);
+    if (sessionId) params.set('session_id', sessionId);
     return request<WorkspaceFile>(`/workspace/file?${params.toString()}`);
   },
 
-  saveWorkspaceFile: (filepath: string, content: string, workspacePath?: string) =>
+  saveWorkspaceFile: (filepath: string, content: string, workspacePath?: string, sessionId?: string) =>
     request<{ success: boolean; filepath: string; lines: number; size: number; modified_at: string }>(
       '/workspace/file',
       {
         method: 'POST',
-        body: JSON.stringify({ filepath, content, workspace_path: workspacePath }),
+        body: JSON.stringify({ filepath, content, workspace_path: workspacePath, session_id: sessionId }),
       }
     ),
 
-  createWorkspaceFile: (path: string, isDirectory: boolean = false, content: string = '', workspacePath?: string) =>
+  createWorkspaceFile: (path: string, isDirectory: boolean = false, content: string = '', workspacePath?: string, sessionId?: string) =>
     request<{ success: boolean; path: string; is_directory: boolean }>('/workspace/file/create', {
       method: 'POST',
-      body: JSON.stringify({ path, is_directory: isDirectory, content, workspace_path: workspacePath }),
+      body: JSON.stringify({ path, is_directory: isDirectory, content, workspace_path: workspacePath, session_id: sessionId }),
     }),
 
-  renameWorkspaceFile: (oldPath: string, newPath: string, workspacePath?: string) =>
+  renameWorkspaceFile: (oldPath: string, newPath: string, workspacePath?: string, sessionId?: string) =>
     request<{ success: boolean; old_path: string; new_path: string }>('/workspace/file/rename', {
       method: 'POST',
-      body: JSON.stringify({ old_path: oldPath, new_path: newPath, workspace_path: workspacePath }),
+      body: JSON.stringify({ old_path: oldPath, new_path: newPath, workspace_path: workspacePath, session_id: sessionId }),
     }),
 
-  deleteWorkspaceFile: (filepath: string, workspacePath?: string) => {
+  deleteWorkspaceFile: (filepath: string, workspacePath?: string, sessionId?: string) => {
     const params = new URLSearchParams({ filepath });
     if (workspacePath) params.set('workspace_path', workspacePath);
+    if (sessionId) params.set('session_id', sessionId);
     return request<{ success: boolean; filepath: string }>(`/workspace/file?${params.toString()}`, {
       method: 'DELETE',
     });
@@ -128,10 +133,10 @@ export const orchestratorApi = {
   // -------------------------------------------------------------------------
   // 2. Terminal & MCP Tool Operations
   // -------------------------------------------------------------------------
-  runTerminalCommand: (command: string, workspacePath?: string) =>
+  runTerminalCommand: (command: string, workspacePath?: string, sessionId?: string) =>
     request<TerminalExecutionResult>('/terminal/run', {
       method: 'POST',
-      body: JSON.stringify({ command, workspace_path: workspacePath }),
+      body: JSON.stringify({ command, workspace_path: workspacePath, session_id: sessionId }),
     }),
 
   getMcpServers: (workspacePath?: string) => {
@@ -144,6 +149,50 @@ export const orchestratorApi = {
       method: 'POST',
       body: JSON.stringify({ server_name: serverName, tool_name: toolName, arguments: args }),
     }),
+
+  // -------------------------------------------------------------------------
+  // 2.5 Project Runtime Subsystem & Preview APIs
+  // -------------------------------------------------------------------------
+  startProjectRuntime: (sessionId: string, command?: string, port?: number) =>
+    request<{
+      success: boolean;
+      session_id: string;
+      workspace_path: string;
+      runtime: ProjectRuntimeInfo;
+    }>(`/sessions/${sessionId}/runtime/start`, {
+      method: 'POST',
+      body: JSON.stringify({ command, port }),
+    }),
+
+  stopProjectRuntime: (sessionId: string, runtimeId: string) =>
+    request<{ success: boolean; runtime_id: string; session_id: string }>(
+      `/sessions/${sessionId}/runtime/${runtimeId}/stop`,
+      { method: 'POST' }
+    ),
+
+  restartProjectRuntime: (sessionId: string, runtimeId: string) =>
+    request<{ success: boolean; session_id: string; runtime: ProjectRuntimeInfo }>(
+      `/sessions/${sessionId}/runtime/${runtimeId}/restart`,
+      { method: 'POST' }
+    ),
+
+  getSessionRuntime: (sessionId: string) =>
+    request<{
+      session_id: string;
+      runtimes: ProjectRuntimeInfo[];
+      active_runtime: ProjectRuntimeInfo | null;
+    }>(`/sessions/${sessionId}/runtime`),
+
+  getRuntimeDetail: (sessionId: string, runtimeId: string) =>
+    request<{ runtime: ProjectRuntimeInfo }>(`/sessions/${sessionId}/runtime/${runtimeId}`),
+
+  getRuntimeLogs: (sessionId: string, runtimeId: string, tail: number = 200) =>
+    request<{
+      runtime_id: string;
+      session_id: string;
+      logs: ProjectRuntimeLog[];
+      count: number;
+    }>(`/sessions/${sessionId}/runtime/${runtimeId}/logs?tail=${tail}`),
 
   previewContext: (userRequest: string, workspacePath?: string) =>
     request<ContextPreview>('/context/preview', {

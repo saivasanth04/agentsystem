@@ -417,3 +417,27 @@ export interface EventMessage {
   payload?: any;
   level?: 'INFO' | 'WARNING' | 'ERROR' | 'CRITICAL';
 }
+
+export interface ProjectRuntimeInfo {
+  runtime_id: string;
+  session_id: string;
+  workspace_dir: string;
+  command: string;
+  framework?: string;
+  pid?: number;
+  port?: number;
+  status: 'STARTING' | 'RUNNING' | 'PORT_DETECTED' | 'HEALTHY' | 'DEGRADED' | 'STOPPED' | 'FAILED';
+  preview_url?: string;
+  health: 'HEALTHY' | 'DEGRADED' | 'UNKNOWN' | 'UNHEALTHY';
+  exit_code?: number;
+  started_at: string;
+  stopped_at?: string;
+  log_count?: number;
+}
+
+export interface ProjectRuntimeLog {
+  stream: 'stdout' | 'stderr' | 'system';
+  text: string;
+  timestamp: string;
+}
+

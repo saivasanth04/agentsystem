@@ -347,6 +347,26 @@ class SQLiteStateStore:
                     FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS idx_traces_session ON traces(session_id);
+
+                CREATE TABLE IF NOT EXISTS project_runtimes (
+                    runtime_id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    workspace_dir TEXT NOT NULL,
+                    command TEXT NOT NULL,
+                    framework TEXT,
+                    pid INTEGER,
+                    port INTEGER,
+                    status TEXT NOT NULL,
+                    preview_url TEXT,
+                    health TEXT DEFAULT 'UNKNOWN',
+                    exit_code INTEGER,
+                    started_at TEXT,
+                    stopped_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_runtimes_session ON project_runtimes(session_id);
                 """)
 
                 try:
@@ -2245,6 +2265,132 @@ class SQLiteStateStore:
                     except Exception:
                         pass
             return results
+
+    # ==========================================
+    # PROJECT RUNTIME CRUD
+    # ==========================================
+    def save_runtime(self, runtime_data: Dict[str, Any]) -> str:
+        """Persists or updates project runtime process metadata."""
+        with self._lock:
+            conn = self._get_connection()
+            now_iso = datetime.now().isoformat()
+            rid = runtime_data.get("runtime_id") or f"rt-{int(datetime.now().timestamp())}-{uuid.uuid4().hex[:6]}"
+            sess_id = runtime_data.get("session_id", "")
+            with conn:
+                if sess_id:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO sessions (session_id, user_request, status, verdict, workspace_dir, created_at, updated_at)
+                        VALUES (?, 'Project Runtime Session', 'IN_PROGRESS', 'PASS', ?, ?, ?)
+                        """,
+                        (sess_id, runtime_data.get("workspace_dir", ""), now_iso, now_iso),
+                    )
+                conn.execute(
+                    """
+                    INSERT INTO project_runtimes (
+                        runtime_id, session_id, workspace_dir, command, framework,
+                        pid, port, status, preview_url, health, exit_code,
+                        started_at, stopped_at, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(runtime_id) DO UPDATE SET
+                        command = excluded.command,
+                        framework = excluded.framework,
+                        pid = excluded.pid,
+                        port = excluded.port,
+                        status = excluded.status,
+                        preview_url = excluded.preview_url,
+                        health = excluded.health,
+                        exit_code = excluded.exit_code,
+                        started_at = excluded.started_at,
+                        stopped_at = excluded.stopped_at,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        rid,
+                        runtime_data.get("session_id", ""),
+                        runtime_data.get("workspace_dir", ""),
+                        runtime_data.get("command", ""),
+                        runtime_data.get("framework"),
+                        runtime_data.get("pid"),
+                        runtime_data.get("port"),
+                        runtime_data.get("status", "STARTING"),
+                        runtime_data.get("preview_url"),
+                        runtime_data.get("health", "UNKNOWN"),
+                        runtime_data.get("exit_code"),
+                        runtime_data.get("started_at", now_iso),
+                        runtime_data.get("stopped_at"),
+                        runtime_data.get("created_at", now_iso),
+                        now_iso,
+                    ),
+                )
+            return rid
+
+    def get_runtime(self, runtime_id: str) -> Optional[Dict[str, Any]]:
+        """Loads a project runtime by its runtime_id."""
+        with self._lock:
+            conn = self._get_connection()
+            row = conn.execute("SELECT * FROM project_runtimes WHERE runtime_id = ?", (runtime_id,)).fetchone()
+            return dict(row) if row else None
+
+    def list_runtimes(self, session_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Lists all runtimes, optionally filtered by session_id, ordered by creation time desc."""
+        with self._lock:
+            conn = self._get_connection()
+            if session_id:
+                rows = conn.execute(
+                    "SELECT * FROM project_runtimes WHERE session_id = ? ORDER BY created_at DESC",
+                    (session_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM project_runtimes ORDER BY created_at DESC").fetchall()
+            return [dict(r) for r in rows]
+
+    def update_runtime_status(
+        self,
+        runtime_id: str,
+        status: str,
+        port: Optional[int] = None,
+        preview_url: Optional[str] = None,
+        health: Optional[str] = None,
+        exit_code: Optional[int] = None,
+        stopped_at: Optional[str] = None,
+        pid: Optional[int] = None,
+    ):
+        """Updates runtime lifecycle and connectivity status."""
+        with self._lock:
+            conn = self._get_connection()
+            now_iso = datetime.now().isoformat()
+            fields = ["status = ?", "updated_at = ?"]
+            params: List[Any] = [status, now_iso]
+            if port is not None:
+                fields.append("port = ?")
+                params.append(port)
+            if preview_url is not None:
+                fields.append("preview_url = ?")
+                params.append(preview_url)
+            if health is not None:
+                fields.append("health = ?")
+                params.append(health)
+            if exit_code is not None:
+                fields.append("exit_code = ?")
+                params.append(exit_code)
+            if stopped_at is not None:
+                fields.append("stopped_at = ?")
+                params.append(stopped_at)
+            if pid is not None:
+                fields.append("pid = ?")
+                params.append(pid)
+            params.append(runtime_id)
+            with conn:
+                conn.execute(f"UPDATE project_runtimes SET {', '.join(fields)} WHERE runtime_id = ?", params)
+
+    def delete_runtime(self, runtime_id: str):
+        """Permanently deletes a runtime record."""
+        with self._lock:
+            conn = self._get_connection()
+            with conn:
+                conn.execute("DELETE FROM project_runtimes WHERE runtime_id = ?", (runtime_id,))
+
 
 
 

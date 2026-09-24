@@ -20,6 +20,7 @@ import { ReplanTimeline } from '../components/ReplanTimeline';
 import { JsonViewer } from '../components/JsonViewer';
 import { FileExplorer } from '../components/FileExplorer';
 import { CodeEditor } from '../components/CodeEditor';
+import { ProjectRuntimeCard } from '../components/ProjectRuntimeCard';
 import {
   FolderKanban,
   GitBranch,
@@ -36,6 +37,8 @@ import {
   Play,
   RefreshCw,
   FolderOpen,
+  Folder,
+  Globe,
   Trash2,
   XCircle
 } from 'lucide-react';
@@ -48,7 +51,7 @@ interface SessionDetailPageProps {
 
 export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId, navigate }) => {
   const { activeWorkspace, openWorkspace } = useWorkspace();
-  const [activeTab, setActiveTab] = useState<'overview' | 'workspace' | 'dag' | 'messages' | 'verification' | 'diff' | 'replan'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'runtime' | 'workspace' | 'dag' | 'messages' | 'verification' | 'diff' | 'replan'>('overview');
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [dag, setDag] = useState<DAGSnapshot | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
@@ -194,7 +197,20 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
               <StatusBadge status={detail.status} size="sm" />
               <StatusBadge status={detail.verdict} size="sm" />
             </div>
-            <p className="text-xs text-slate-400 line-clamp-1 mt-0.5">
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              <span className="text-[11px] font-mono text-cyan-400 bg-cyan-950/60 border border-cyan-500/30 px-2 py-0.5 rounded-lg flex items-center gap-1.5" title={sessionWorkspacePath}>
+                <Folder className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                <span className="font-semibold text-slate-400">Workspace:</span>
+                <span className="text-slate-200 truncate max-w-xs">{sessionWorkspacePath}</span>
+              </span>
+              {detail.git_branch && (
+                <span className="text-[11px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                  <GitBranch className="w-3 h-3 text-slate-400" />
+                  <span>{detail.git_branch}</span>
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 line-clamp-1 mt-1">
               {detail.user_request}
             </p>
           </div>
@@ -258,6 +274,7 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
       <div className="flex items-center gap-1.5 border-b border-slate-800 overflow-x-auto pb-1">
         {[
           { id: 'overview', label: 'Overview', icon: FolderKanban },
+          { id: 'runtime', label: 'Runtime & Preview', icon: Globe },
           { id: 'workspace', label: 'IDE & Filesystem', icon: FileCode },
           { id: 'dag', label: 'DAG Execution', icon: GitBranch },
           { id: 'messages', label: 'Messages & Trace', icon: MessageSquare },
@@ -327,6 +344,9 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
               </span>
             </div>
           </div>
+
+          {/* Project Runtime & Preview Subsystem Card */}
+          <ProjectRuntimeCard sessionId={sessionId} workspacePath={sessionWorkspacePath} />
 
           {/* Reproducibility Card */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-3">
@@ -440,6 +460,22 @@ export const SessionDetailPage: React.FC<SessionDetailPageProps> = ({ sessionId,
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* TAB: RUNTIME & PREVIEW */}
+      {activeTab === 'runtime' && (
+        <div className="space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-sm">
+            <h3 className="text-xs font-mono font-bold text-slate-300 uppercase mb-1">
+              Isolated Project Application Subsystem
+            </h3>
+            <p className="text-xs text-slate-400">
+              Run and preview user applications within the session's workspace (<code className="text-cyan-400">{sessionWorkspacePath}</code>).
+              Process execution, ports, and dev servers are strictly decoupled from Agent System infrastructure.
+            </p>
+          </div>
+          <ProjectRuntimeCard sessionId={sessionId} workspacePath={sessionWorkspacePath} />
         </div>
       )}
 

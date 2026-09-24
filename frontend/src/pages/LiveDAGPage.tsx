@@ -12,6 +12,8 @@ import {
   Pause,
   StopCircle,
   RotateCcw,
+  Folder,
+  Globe,
 } from 'lucide-react';
 
 interface LiveDAGPageProps {
@@ -21,6 +23,7 @@ interface LiveDAGPageProps {
 
 export const LiveDAGPage: React.FC<LiveDAGPageProps> = ({ sessionId: propSessionId, navigate }) => {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(propSessionId || null);
+  const [sessionWorkspace, setSessionWorkspace] = useState<string | null>(null);
   const [dag, setDag] = useState<DAGSnapshot | null>(null);
   const [events, setEvents] = useState<EventMessage[]>([]);
   const [status, setStatus] = useState<string>('IN_PROGRESS');
@@ -66,6 +69,7 @@ export const LiveDAGPage: React.FC<LiveDAGPageProps> = ({ sessionId: propSession
         setStatus(detail.status || 'IN_PROGRESS');
         setCostUsd(typeof detail.total_cost_usd === 'number' ? detail.total_cost_usd : 0.0);
         setTokens(typeof detail.total_tokens === 'number' ? detail.total_tokens : 0);
+        if (detail.workspace_path) setSessionWorkspace(detail.workspace_path);
       }
     } catch (err) {
       console.error('Failed to load live DAG:', err);
@@ -149,14 +153,36 @@ export const LiveDAGPage: React.FC<LiveDAGPageProps> = ({ sessionId: propSession
               </h1>
               <StatusBadge status={status} size="sm" />
             </div>
-            <span className="text-xs font-mono text-slate-400">
-              SESSION: {activeSessionId || 'No active session'}
-            </span>
+            <div className="flex flex-wrap items-center gap-2.5 mt-1">
+              <span className="text-xs font-mono text-slate-400">
+                SESSION: {activeSessionId || 'No active session'}
+              </span>
+              {sessionWorkspace && (
+                <span
+                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-blue-950/60 border border-blue-500/30 text-blue-300 text-[11px] font-mono"
+                  title={`Authoritative Session Workspace: ${sessionWorkspace}`}
+                >
+                  <Folder className="w-3 h-3 text-blue-400" />
+                  <span className="max-w-[280px] truncate">{sessionWorkspace}</span>
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Live Control Bar */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {activeSessionId && (
+            <button
+              onClick={() => navigate(`/sessions/${activeSessionId}`)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-950/50 hover:bg-cyan-900/50 border border-cyan-500/40 text-cyan-300 hover:text-cyan-200 text-xs font-mono font-semibold transition-colors"
+              title="Inspect Session Details, Logs, and Runtime Preview"
+            >
+              <Globe className="w-3.5 h-3.5" />
+              Runtime & Preview
+            </button>
+          )}
+
           <button
             onClick={() => setIsPaused(!isPaused)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-mono font-semibold border transition-all ${

@@ -168,18 +168,30 @@ export const NewTaskPage: React.FC<NewTaskPageProps> = ({ navigate, onSessionLau
           </p>
         </div>
 
-        {/* Workspace Quick-Card */}
-        <div className="flex items-center space-x-3 bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-xs font-mono shadow-md">
-          <Folder className="w-4 h-4 text-cyan-400 shrink-0" />
-          <div className="min-w-0">
-            <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Active Repository Root</div>
-            <div className="text-slate-200 font-semibold truncate max-w-[200px]" title={activeWorkspace?.path}>
+        {/* Workspace Authoritative Boundary Card */}
+        <div className="flex items-center space-x-3 bg-slate-900 border border-slate-800 hover:border-slate-700 p-3 rounded-2xl text-xs font-mono shadow-md transition-colors">
+          <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center shrink-0">
+            <Folder className="w-4 h-4 text-cyan-400" />
+          </div>
+          <div className="min-w-0 pr-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-cyan-400 uppercase tracking-wider font-bold">Session Workspace Boundary</span>
+              {activeWorkspace?.is_git && (
+                <span className="text-[9px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded font-mono">
+                  {activeWorkspace.git_branch || 'main'}{activeWorkspace.git_dirty ? ' *' : ''}
+                </span>
+              )}
+            </div>
+            <div className="text-slate-100 font-semibold truncate max-w-[260px]" title={activeWorkspace?.path}>
               {activeWorkspace ? activeWorkspace.project_name : 'No workspace bound'}
+            </div>
+            <div className="text-[10px] text-slate-500 truncate max-w-[260px]" title={activeWorkspace?.path}>
+              {activeWorkspace?.path || 'Global default root'}
             </div>
           </div>
           <button
             onClick={openWorkspaceModal}
-            className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-cyan-300 transition-colors"
+            className="p-2 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-cyan-300 transition-colors border border-transparent hover:border-slate-700"
             title="Change workspace folder"
           >
             <FolderOpen className="w-4 h-4" />
