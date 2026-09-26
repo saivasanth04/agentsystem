@@ -88,6 +88,7 @@ class IDERepairPipeline:
         agent_loop: Optional[AgentExecutionLoop] = None,
         tool_dispatcher: Optional[Any] = None,
         llm_client: Optional[Any] = None,
+        verification_pipeline: Optional[Any] = None,
     ):
         self.workspace = workspace
         self.workspace_root = Path(workspace.root_dir)
@@ -123,6 +124,22 @@ class IDERepairPipeline:
             context_compiler=self.context_compiler,
             observation_engine=self.obs_engine,
         )
+
+        # 6. Verification Pipeline (Evidence-based verification authority)
+        if verification_pipeline is not None:
+            self.verification_pipeline = verification_pipeline
+        else:
+            try:
+                from ide.verification_pipeline import IDEVerificationPipeline
+                self.verification_pipeline = IDEVerificationPipeline(
+                    workspace=self.workspace,
+                    repository_brain=self.repo_brain,
+                    agent_execution_loop=self.agent_loop,
+                    tool_dispatcher=self.tool_dispatcher,
+                    llm_client=self.llm_client,
+                )
+            except Exception:
+                self.verification_pipeline = None
 
     def handle_failure(
         self,
@@ -245,20 +262,38 @@ class IDERepairPipeline:
             current_state = RepairLifecycleState.PATCH_APPLIED
 
         # STEP 7: VERIFICATION (VERIFICATION_PASSED)
-        # Verify that repaired files are syntactically sound and non-empty
+        # Evidence-based verification authority via IDEVerificationPipeline.
+        # Rule: AST parsing alone is strictly forbidden from declaring verification success.
         verification_passed = False
-        if repaired_files:
-            syntax_clean = True
-            for rf in repaired_files:
-                abs_f = self.workspace_root / rf
-                if abs_f.exists() and rf.endswith(".py"):
-                    try:
-                        ast.parse(abs_f.read_text(encoding="utf-8", errors="replace"), filename=rf)
-                    except SyntaxError:
-                        syntax_clean = False
-                        break
-            if syntax_clean:
-                verification_passed = True
+        if repaired_files and self.verification_pipeline:
+            stage_clean = True
+            stage_name = failure_stage.lower()
+            if hasattr(self.verification_pipeline, f"stage_{stage_name}"):
+                stage_method = getattr(self.verification_pipeline, f"stage_{stage_name}")
+                try:
+                    if stage_name in ("build", "lint", "security"):
+                        st_res = stage_method(target_files=repaired_files)
+                    elif stage_name == "tests":
+                        test_targets = [f for f in repaired_files if "test" in f]
+                        st_res = stage_method(test_files=test_targets if test_targets else None)
+                    else:
+                        st_res = stage_method()
+                    if not st_res.passed and not getattr(st_res, "skipped", False):
+                        stage_clean = False
+                except Exception as e:
+                    logger.warning(f"Re-verification stage {failure_stage} execution error: {e}")
+                    stage_clean = False
+
+            if stage_clean:
+                try:
+                    v_report = self.verification_pipeline.run_lifecycle(
+                        target_files=repaired_files,
+                        fail_fast=True,
+                    )
+                    verification_passed = v_report.passed
+                except Exception as e:
+                    logger.warning(f"Verification pipeline lifecycle execution error: {e}")
+                    verification_passed = False
 
         if verification_passed:
             current_state = RepairLifecycleState.VERIFICATION_PASSED

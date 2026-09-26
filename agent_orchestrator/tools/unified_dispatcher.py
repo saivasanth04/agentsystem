@@ -112,6 +112,16 @@ class UnifiedToolDispatcher:
 
         return schemas
 
+    def get_executable_tools(self, allowed_tools: Optional[Set[str]] = None) -> List[Any]:
+        """Delegates to ToolPolicyEngine to enforce strict EXECUTABLE lifecycle state."""
+        from runtime.tool_policy import ToolPolicyEngine
+        return ToolPolicyEngine.get_executable_tools(allowed_tools=allowed_tools)
+
+    def get_executable_schemas(self, allowed_tools: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
+        """Delegates to ToolPolicyEngine to return model tool schemas for EXECUTABLE tools only."""
+        from runtime.tool_policy import ToolPolicyEngine
+        return ToolPolicyEngine.get_executable_schemas(allowed_tools=allowed_tools)
+
     def get_all_tools(self) -> List[Any]:
         """Returns all unique tools across builtin and healthy MCP servers."""
         tools = list(self.builtin_registry.get_all_tools())

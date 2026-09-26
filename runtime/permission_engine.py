@@ -111,7 +111,13 @@ class PermissionEngine:
         args = dict(arguments or {})
 
         # 1. Capability & Tool Authorization Check
-        if not active_policy.is_tool_allowed(clean_name, args):
+        tool_allowed = True
+        try:
+            tool_allowed = active_policy.is_tool_allowed(clean_name, args)
+        except TypeError:
+            tool_allowed = active_policy.is_tool_allowed(clean_name)
+
+        if not tool_allowed:
             resolved = active_policy.resolve_tool_name(clean_name)
             return PermissionEvaluationResult(
                 allowed=False,
@@ -212,7 +218,7 @@ class PermissionEngine:
         context: Optional[Dict[str, Any]],
     ) -> bool:
         """Determines if the operation requires explicit confirmation."""
-        if policy.approval_required:
+        if getattr(policy, "approval_required", False):
             return True
 
         # Destructive tools inherently requiring approval if not pre-cleared

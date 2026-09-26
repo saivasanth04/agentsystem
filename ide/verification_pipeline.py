@@ -65,6 +65,7 @@ class StageOutcome:
     """Outcome of a single verification stage."""
     stage: VerificationStage
     passed: bool
+    skipped: bool = False
     exit_code: int = 0
     stdout: str = ""
     stderr: str = ""
@@ -76,6 +77,7 @@ class StageOutcome:
         return {
             "stage": self.stage.value if isinstance(self.stage, VerificationStage) else str(self.stage),
             "passed": self.passed,
+            "skipped": self.skipped,
             "exit_code": self.exit_code,
             "stdout": self.stdout,
             "stderr": self.stderr,
@@ -91,6 +93,7 @@ class VerificationReport:
     passed: bool
     current_stage: VerificationStage
     stage_outcomes: Dict[str, StageOutcome] = field(default_factory=dict)
+    skipped_stages: List[str] = field(default_factory=list)
     git_diff: str = ""
     modified_files: List[str] = field(default_factory=list)
     failure_stage: Optional[VerificationStage] = None
@@ -102,6 +105,7 @@ class VerificationReport:
             "passed": self.passed,
             "current_stage": self.current_stage.value,
             "stage_outcomes": {k: v.to_dict() for k, v in self.stage_outcomes.items()},
+            "skipped_stages": self.skipped_stages,
             "git_diff_length": len(self.git_diff),
             "modified_files": self.modified_files,
             "failure_stage": self.failure_stage.value if self.failure_stage else None,
@@ -125,11 +129,16 @@ class IDEVerificationPipeline:
         tool_dispatcher: Optional[Any] = None,
         llm_client: Optional[Any] = None,
         runtime_profile: Optional[Any] = None,
+        repository_brain: Optional[Any] = None,
+        agent_execution_loop: Optional[Any] = None,
+        **kwargs: Any,
     ):
         self.workspace = workspace
         self.workspace_root = Path(workspace.root_dir)
         self.tool_dispatcher = tool_dispatcher
         self.llm_client = llm_client
+        self.repository_brain = repository_brain
+        self.agent_execution_loop = agent_execution_loop
 
         # Runtime environment detection (Fix 11: Framework-Aware Verification)
         if runtime_profile is not None:
@@ -217,6 +226,20 @@ class IDEVerificationPipeline:
         Authoritative task verification delegating to the unified VerificationGate.
         """
         return self.verification_gate.verify_task(task)
+
+    def verify(
+        self,
+        edits: Optional[Dict[str, str]] = None,
+        files: Optional[List[str]] = None,
+        acceptance_command: Optional[str] = None,
+        fail_fast: bool = True,
+    ) -> VerificationReport:
+        """Executes the full multi-stage verification lifecycle."""
+        return self.run_lifecycle(
+            edits=edits,
+            acceptance_command=acceptance_command,
+            fail_fast=fail_fast,
+        )
 
     def stage_edit(
         self,
@@ -386,9 +409,18 @@ class IDEVerificationPipeline:
             else:
                 rc, out, err = self._run_cmd(["npx", "eslint", "."])
 
-            # If eslint not installed or no rules config, do not treat missing binary as hard failure
+            # If eslint not installed or no rules config, missing binary is marked SKIPPED (not PASSED)
             if rc != 0 and ("not recognized" in err.lower() or "cannot find" in err.lower() or "enoent" in err.lower()):
-                rc, out, err = 0, "ESLint not installed in workspace; skipped.", ""
+                return StageOutcome(
+                    stage=VerificationStage.LINT,
+                    passed=False,
+                    skipped=True,
+                    exit_code=0,
+                    stdout=f"SKIPPED: ESLint not installed in workspace. Evidence: {err.strip()}",
+                    stderr=err,
+                    duration_seconds=time.time() - start_time,
+                    metadata={"linter": "eslint", "skipped": True, "reason": "Missing eslint binary"},
+                )
 
             return StageOutcome(
                 stage=VerificationStage.LINT,
@@ -409,8 +441,17 @@ class IDEVerificationPipeline:
             else:
                 rc, out, err = 0, "No checkstyle configured; skipped.", ""
 
-            if rc != 0 and ("not recognized" in err.lower() or "cannot find" in err.lower()):
-                rc, out, err = 0, "Maven/Gradle checkstyle not configured; skipped.", ""
+            if rc != 0 and ("not recognized" in err.lower() or "cannot find" in err.lower() or "enoent" in err.lower()):
+                return StageOutcome(
+                    stage=VerificationStage.LINT,
+                    passed=False,
+                    skipped=True,
+                    exit_code=0,
+                    stdout="SKIPPED: Maven/Gradle checkstyle not configured or tool missing.",
+                    stderr=err,
+                    duration_seconds=time.time() - start_time,
+                    metadata={"linter": "checkstyle", "skipped": True, "reason": "Missing checkstyle tool"},
+                )
 
             return StageOutcome(
                 stage=VerificationStage.LINT,
@@ -562,6 +603,19 @@ class IDEVerificationPipeline:
                 rc, out, err = self._run_cmd(["mvn", "dependency-check:check", "-q"])
             else:
                 rc, out, err = 0, "No vulnerability scanner configured.", ""
+
+            if rc != 0 and ("not recognized" in err.lower() or "cannot find" in err.lower() or "enoent" in err.lower()):
+                return StageOutcome(
+                    stage=VerificationStage.SECURITY,
+                    passed=False,
+                    skipped=True,
+                    exit_code=0,
+                    stdout="SKIPPED: Maven dependency-check plugin not installed or maven offline.",
+                    stderr=err,
+                    duration_seconds=time.time() - start_time,
+                    metadata={"security_scanner": "dependency-check", "skipped": True, "reason": "Tool missing"},
+                )
+
             return StageOutcome(
                 stage=VerificationStage.SECURITY,
                 passed=(rc == 0),
@@ -666,11 +720,12 @@ class IDEVerificationPipeline:
         # 2. BUILD
         build_outcome = self.stage_build(target_files=modified_files)
         outcomes[VerificationStage.BUILD.value] = build_outcome
-        if fail_fast and not build_outcome.passed:
+        if fail_fast and not build_outcome.passed and not build_outcome.skipped:
             return VerificationReport(
                 passed=False,
                 current_stage=VerificationStage.BUILD,
                 stage_outcomes=outcomes,
+                skipped_stages=[s for s, o in outcomes.items() if o.skipped],
                 git_diff=active_diff,
                 modified_files=modified_files,
                 failure_stage=VerificationStage.BUILD,
@@ -681,11 +736,12 @@ class IDEVerificationPipeline:
         # 3. LINT
         lint_outcome = self.stage_lint(target_files=modified_files)
         outcomes[VerificationStage.LINT.value] = lint_outcome
-        if fail_fast and not lint_outcome.passed:
+        if fail_fast and not lint_outcome.passed and not lint_outcome.skipped:
             return VerificationReport(
                 passed=False,
                 current_stage=VerificationStage.LINT,
                 stage_outcomes=outcomes,
+                skipped_stages=[s for s, o in outcomes.items() if o.skipped],
                 git_diff=active_diff,
                 modified_files=modified_files,
                 failure_stage=VerificationStage.LINT,
@@ -696,11 +752,12 @@ class IDEVerificationPipeline:
         # 4. TESTS
         test_outcome = self.stage_tests(acceptance_command=acceptance_command)
         outcomes[VerificationStage.TESTS.value] = test_outcome
-        if fail_fast and not test_outcome.passed:
+        if fail_fast and not test_outcome.passed and not test_outcome.skipped:
             return VerificationReport(
                 passed=False,
                 current_stage=VerificationStage.TESTS,
                 stage_outcomes=outcomes,
+                skipped_stages=[s for s, o in outcomes.items() if o.skipped],
                 git_diff=active_diff,
                 modified_files=modified_files,
                 failure_stage=VerificationStage.TESTS,
@@ -711,11 +768,12 @@ class IDEVerificationPipeline:
         # 5. SECURITY
         sec_outcome = self.stage_security(target_files=modified_files)
         outcomes[VerificationStage.SECURITY.value] = sec_outcome
-        if fail_fast and not sec_outcome.passed:
+        if fail_fast and not sec_outcome.passed and not sec_outcome.skipped:
             return VerificationReport(
                 passed=False,
                 current_stage=VerificationStage.SECURITY,
                 stage_outcomes=outcomes,
+                skipped_stages=[s for s, o in outcomes.items() if o.skipped],
                 git_diff=active_diff,
                 modified_files=modified_files,
                 failure_stage=VerificationStage.SECURITY,
@@ -726,11 +784,12 @@ class IDEVerificationPipeline:
         # 6. REVIEW
         rev_outcome = self.stage_review(git_diff=active_diff, test_outcome=test_outcome)
         outcomes[VerificationStage.REVIEW.value] = rev_outcome
-        if fail_fast and not rev_outcome.passed:
+        if fail_fast and not rev_outcome.passed and not rev_outcome.skipped:
             return VerificationReport(
                 passed=False,
                 current_stage=VerificationStage.REVIEW,
                 stage_outcomes=outcomes,
+                skipped_stages=[s for s, o in outcomes.items() if o.skipped],
                 git_diff=active_diff,
                 modified_files=modified_files,
                 failure_stage=VerificationStage.REVIEW,
@@ -739,10 +798,12 @@ class IDEVerificationPipeline:
             )
 
         # 7. PASS
+        skipped_stages = [s for s, o in outcomes.items() if o.skipped]
         return VerificationReport(
             passed=True,
             current_stage=VerificationStage.PASS,
             stage_outcomes=outcomes,
+            skipped_stages=skipped_stages,
             git_diff=active_diff,
             modified_files=modified_files,
             total_duration_seconds=time.time() - start_all,

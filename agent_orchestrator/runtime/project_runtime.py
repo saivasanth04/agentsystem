@@ -15,7 +15,7 @@ import socket
 import subprocess
 import threading
 import time
-from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Deque, Dict, List, Optional, Set, Tuple, Union
 import urllib.request
 import uuid
 
@@ -154,9 +154,13 @@ class ProjectRuntimeManager:
         self,
         state_store: Optional[SQLiteStateStore] = None,
         event_bus: Optional[EventBus] = None,
+        workspace_root: Optional[Any] = None,
+        workspace_dir: Optional[Any] = None,
+        **kwargs: Any,
     ):
         self.state_store = state_store
         self.event_bus = event_bus
+        self.workspace_root = Path(workspace_root) if workspace_root else (Path(workspace_dir) if workspace_dir else None)
         self.active_processes: Dict[str, ManagedRuntimeProcess] = {}  # runtime_id -> ManagedRuntimeProcess
         self._lock = threading.RLock()
         self._cleanup_stale_runtimes()
@@ -360,17 +364,21 @@ class ProjectRuntimeManager:
     def start_runtime(
         self,
         session_id: str,
-        workspace_dir: Path,
+        workspace_dir: Optional[Union[Path, str]] = None,
         custom_command: Optional[str] = None,
         requested_port: Optional[int] = None,
+        **kwargs: Any,
     ) -> ManagedRuntimeProcess:
         """
         Spawns a new project dev server / runtime process bound to session workspace.
         Terminates any previously running process for this session first.
         """
-        ws = Path(workspace_dir).resolve()
+        target_ws = workspace_dir or self.workspace_root
+        if not target_ws:
+            raise ValueError("No workspace directory specified for runtime execution.")
+        ws = Path(target_ws).resolve()
         if not ws.exists() or not ws.is_dir():
-            raise ValueError(f"Target workspace directory '{workspace_dir}' does not exist.")
+            raise ValueError(f"Target workspace directory '{target_ws}' does not exist.")
 
         # Stop existing active runtimes for this session
         self.stop_session_runtimes(session_id)

@@ -153,10 +153,37 @@ class AgentExecutionLoop:
             except Exception as e:
                 logger.debug(f"Agent registry lookup: {e}")
 
-        # 2. Derive task capabilities and scoped tool policy
-        capabilities = self.router.route_task(effective_objective, active_skills=active_skills)
-        tool_policy = self.router.get_tool_policy_for_task(effective_objective, active_skills=active_skills)
-        allowed_tools = self.router.get_allowed_tools_for_task(effective_objective, active_skills=active_skills)
+        # 2. Derive task capabilities and scoped tool policy via SkillPlan / SkillResolver (Mandatory Skill Authority)
+        skill_plan = kwargs.get("skill_plan")
+        minimal_caps = kwargs.get("minimal_capabilities")
+        if skill_plan is not None:
+            tool_policy = skill_plan.composite_tool_policy
+            eff_skills = [s.name for s in skill_plan.skills]
+            capabilities = []
+            for s in skill_plan.skills:
+                if hasattr(s, "manifest") and getattr(s.manifest, "capabilities", None):
+                    capabilities.extend(s.manifest.capabilities)
+            if not capabilities:
+                capabilities = list(getattr(tool_policy, "capabilities", [])) or self.router.route_task(effective_objective, active_skills=eff_skills)
+            allowed_tools = list(tool_policy.allowed_tools)
+        elif self.skill_registry:
+            from skills.resolver import SkillResolver
+            resolver = SkillResolver(skill_registry=self.skill_registry)
+            skill_plan = resolver.resolve(task_description=effective_objective)
+            tool_policy = skill_plan.composite_tool_policy
+            eff_skills = [s.name for s in skill_plan.skills]
+            capabilities = []
+            for s in skill_plan.skills:
+                if hasattr(s, "manifest") and getattr(s.manifest, "capabilities", None):
+                    capabilities.extend(s.manifest.capabilities)
+            if not capabilities:
+                capabilities = list(getattr(tool_policy, "capabilities", [])) or self.router.route_task(effective_objective, active_skills=eff_skills)
+            allowed_tools = list(tool_policy.allowed_tools)
+        else:
+            capabilities = self.router.route_task(effective_objective, active_skills=active_skills)
+            tool_policy = self.router.get_tool_policy_for_task(effective_objective, active_skills=active_skills)
+            allowed_tools = self.router.get_allowed_tools_for_task(effective_objective, active_skills=active_skills)
+            eff_skills = active_skills or []
 
         if available_tools:
             allowed_tools = [t for t in allowed_tools if t in available_tools or t.replace("filesystem.", "").replace("terminal.", "") in available_tools]
@@ -167,7 +194,7 @@ class AgentExecutionLoop:
             iteration=0,
             max_iterations=effective_max,
             status=LoopStatus.RUNNING,
-            active_skills=active_skills or [],
+            active_skills=eff_skills,
             capabilities=capabilities,
             allowed_tools=allowed_tools,
             tool_policy=tool_policy,
@@ -562,23 +589,37 @@ class AgentExecutionLoop:
             try:
                 result = self.dispatcher.call_tool(tool_name, tool_args)
                 exit_code = 0
-                if isinstance(result, dict) and (result.get("error") or result.get("exit_code")):
+                if isinstance(result, dict) and (result.get("error") or result.get("exit_code") or result.get("success") is False):
                     exit_code = int(result.get("exit_code", 1))
                 return result, exit_code
             except Exception as e:
-                return {"error": str(e)}, 1
+                return {
+                    "error": f"Tool '{tool_name}' dispatch failed: {e}",
+                    "success": False,
+                    "error_code": "TOOL_DISPATCH_FAILED",
+                }, 1
 
         # Check browser adapter if applicable
         if tool_name.startswith("browser_") and self.router.browser_adapter:
             try:
                 res = self.router.browser_adapter.call_tool(tool_name, tool_args)
-                exit_code = 0 if res.get("success", True) else 1
+                exit_code = 0 if res.get("success", False) else 1
                 return res, exit_code
             except Exception as e:
-                return {"error": str(e)}, 1
+                return {
+                    "error": f"Browser tool '{tool_name}' failed: {e}",
+                    "success": False,
+                    "error_code": "MCP_MISSING",
+                }, 1
 
-        # Fallback simulation of tool success
-        return f"Executed {tool_name} successfully.", 0
+        # Deterministic failure when tool cannot be dispatched (CRITICAL FIX: Zero synthetic success)
+        err_msg = f"Tool '{tool_name}' execution failed: TOOL_NOT_FOUND or TOOL_NOT_EXECUTABLE. No valid executor found."
+        logger.warning(err_msg)
+        return {
+            "error": err_msg,
+            "success": False,
+            "error_code": "TOOL_NOT_FOUND",
+        }, 1
 
     def _phase_state_update(self, state: ExecutionState, observation: Observation) -> None:
         """

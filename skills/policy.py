@@ -46,9 +46,11 @@ class ToolPolicy:
     """
     allowed_tools: Set[str] = field(default_factory=set)
     required_tools: Set[str] = field(default_factory=set)
+    capabilities: Set[str] = field(default_factory=set)
     tool_aliases: Dict[str, str] = field(default_factory=lambda: dict(DEFAULT_TOOL_ALIASES))
     permissions: Set[str] = field(default_factory=set)
     rate_limits: Dict[str, int] = field(default_factory=dict)
+    approval_required: bool = False
 
     def resolve_tool_name(self, tool_name: str) -> str:
         """
@@ -69,7 +71,7 @@ class ToolPolicy:
             return self.tool_aliases[normalized]
         return clean
 
-    def is_tool_allowed(self, tool_name: str) -> bool:
+    def is_tool_allowed(self, tool_name: str, arguments: Optional[Dict[str, Any]] = None, *args: Any, **kwargs: Any) -> bool:
         """
         Checks whether the tool is permitted under this policy.
         If allowed_tools is empty, access is unconstrained by this policy

@@ -214,6 +214,17 @@ class TaskOrchestrator:
             on_event_callback=self.on_event,
         )
 
+        from skills.runtime import SkillRuntime
+        self.skill_runtime = kwargs.get("skill_runtime") or SkillRuntime(
+            skill_registry=self.skill_registry,
+            agent_registry=self.agent_registry,
+            mcp_manager=self.mcp_manager,
+            tool_dispatcher=self.unified_dispatcher,
+            workspace_manager=self.workspace,
+            llm_client=self.llm,
+            on_event=self.on_event,
+        )
+
         from .runtime.event_bus import EventBus, EventType, ExecutionEvent
         self.event_bus = kwargs.get("event_bus") or EventBus(
             on_event_callback=self.on_event,
@@ -1010,14 +1021,25 @@ Respond ONLY with the JSON array of tasks.
         reviewer_manifest = discovered_reviewers[0][0] if discovered_reviewers else "REVIEWER"
         agent = self.select_agent(reviewer_manifest)
 
-        skills = [m.name for m, _ in self.skill_registry.discover(query="code review quality standards", top_k=2)]
+        # Resolve skills and policy through SkillResolver & SkillRuntime
+        if hasattr(self, "skill_runtime") and self.skill_runtime:
+            plan = self.skill_runtime.resolver.resolve(
+                task_description="code review quality standards",
+                capabilities=["code-review", "quality-audit"],
+            )
+            skills = [s.name for s in plan.skills]
+            skill_plan = plan
+        else:
+            skills = [m.name for m, _ in self.skill_registry.discover(query="code review quality standards", top_k=2)]
+            skill_plan = None
+
         self.on_event("EXECUTE AGENT", f"Dispatching Quality Audit [{agent.name}]")
 
         from .routing.model_router import model_router, TaskComplexity
         routed_rev_model = model_router.route(role=agent.name, complexity=TaskComplexity.COMPLEX)
 
         ostate = self._graph_to_state(state)
-        res = agent.execute(ostate, active_skills=skills, model=routed_rev_model)
+        res = agent.execute(ostate, active_skills=skills, model=routed_rev_model, skill_plan=skill_plan)
         verdict = res.get("verdict", "FAIL").upper()
         ev_info = res.get("evidence", {})
         if ev_info and isinstance(ev_info, dict):
@@ -1945,10 +1967,19 @@ Respond ONLY with the JSON array of tasks.
             agent = self.select_agent(discovered[0][0]) if discovered else self.select_agent("CODER")
             task.owner_agent = agent.name
 
-        # Discover active skills
+        # Discover and resolve active skills via SkillResolver & SkillRuntime
         skill_query = f"{task.objective} {' '.join(task.required_capabilities)} {' '.join(task.preferred_skills)}"
-        discovered_skills = self.skill_registry.discover(query=skill_query, top_k=3)
-        active_skills = [m.name for m, _ in discovered_skills]
+        if hasattr(self, "skill_runtime") and self.skill_runtime:
+            skill_plan = self.skill_runtime.resolver.resolve(
+                task_description=skill_query,
+                capabilities=task.required_capabilities,
+                preferred_skills=task.preferred_skills,
+            )
+            active_skills = [s.name for s in skill_plan.skills]
+        else:
+            discovered_skills = self.skill_registry.discover(query=skill_query, top_k=3)
+            active_skills = [m.name for m, _ in discovered_skills]
+            skill_plan = None
 
         clean_id = task_id.replace(":", "_").replace("/", "_").replace("\\", "_")
         from .tools.workspace import SandboxedWorkspace
@@ -1979,6 +2010,7 @@ Respond ONLY with the JSON array of tasks.
                 res = agent.execute(
                     ostate,
                     active_skills=active_skills,
+                    skill_plan=skill_plan,
                     task_info=task_context,
                     permissions=task.permissions,
                     max_turns=task.max_turns,
