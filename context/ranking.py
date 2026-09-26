@@ -197,3 +197,72 @@ class ContextRanker:
                 metadata=cand.get("metadata", {}),
             ))
         return ranked
+
+
+from enum import Enum
+
+
+class ContextTier(str, Enum):
+    FOCAL = "FOCAL"          # Target files to modify/inspect
+    INTERFACE = "INTERFACE"  # Dependent/imported files (signatures only)
+    OUTLINE = "OUTLINE"      # Ambient repository overview
+
+
+@dataclass
+class RankedContextItem:
+    """A prioritized context item with its tier and formatted content."""
+    filepath: str
+    tier: ContextTier
+    score: float
+    symbols: List[str] = field(default_factory=list)
+    formatted_content: str = ""
+    estimated_tokens: int = 0
+
+
+class RelevanceRanker:
+    """
+    Ranks files and symbols relative to a task using AST knowledge graph and lexical scoring.
+    """
+    def __init__(
+        self,
+        code_graph: Optional[Any] = None,
+        workspace: Optional[Any] = None,
+        semantic_index: Optional[Any] = None,
+        cbm: Optional[Any] = None,
+    ):
+        self.code_graph = code_graph
+        self.workspace = workspace
+        self.semantic_index = semantic_index
+        self.cbm = cbm
+
+    def rank_context_for_task(
+        self,
+        task_info: Dict[str, Any],
+        max_focal_tokens: int = 8000,
+        max_interface_tokens: int = 3500,
+    ) -> List[RankedContextItem]:
+        items: List[RankedContextItem] = []
+        inputs = task_info.get("inputs", []) or []
+        outputs = task_info.get("outputs", []) or []
+        target_fps = set(inputs + outputs)
+
+        for fp in sorted(list(target_fps)):
+            clean_fp = str(fp).replace("\\", "/").strip()
+            if not clean_fp or clean_fp == "*":
+                continue
+            content = ""
+            if self.workspace and hasattr(self.workspace, "read_file"):
+                try:
+                    res = self.workspace.read_file(clean_fp)
+                    content = res if isinstance(res, str) else res.get("content", "")
+                except Exception:
+                    content = ""
+            items.append(RankedContextItem(
+                filepath=clean_fp,
+                tier=ContextTier.FOCAL,
+                score=1.0,
+                formatted_content=content,
+                estimated_tokens=len(content) // 4,
+            ))
+        return items
+

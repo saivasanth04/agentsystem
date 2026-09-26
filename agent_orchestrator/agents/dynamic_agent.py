@@ -62,55 +62,15 @@ class DynamicAgent(BaseAgent):
     def _resolve_scoped_tools(self) -> List[str]:
         """
         Filters available tools down to the declared tools in the manifest,
-        supporting tool category aliases like 'filesystem', 'terminal', 'code-search', 'communication',
-        as well as tools implied by capabilities.
+        delegating directly to ToolPolicyEngine to enforce the strict EXECUTABLE lifecycle invariant.
         """
-        if hasattr(self.tool_registry, "get_all_tools"):
-            tools_list = self.tool_registry.get_all_tools()
-            all_tools = [getattr(t, "name", str(t)) for t in tools_list]
-        elif hasattr(self.tool_registry, "get_schemas"):
-            schemas = self.tool_registry.get_schemas()
-            all_tools = [s.get("function", {}).get("name") for s in schemas if s.get("function", {}).get("name")]
-        elif hasattr(self.tool_registry, "_tools"):
-            all_tools = list(self.tool_registry._tools.keys())
-        else:
-            all_tools = ["read_file", "write_file", "list_files", "terminal_execute", "complete_task"]
-
-        from ..capabilities.model import default_capability_registry, expand_tool_names
-
-        declared_or_cap = list(self.declared_tools)
-        if not declared_or_cap and self.capabilities:
-            declared_or_cap = default_capability_registry.resolve_tools(self.capabilities)
-
-        if not declared_or_cap or "*" in declared_or_cap:
-            return all_tools
-
-        expanded = expand_tool_names(declared_or_cap)
-        scoped: List[str] = ["complete_task"]
-        for t_name in expanded:
-            norm = t_name.lower().strip()
-            if norm in all_tools:
-                scoped.append(norm)
-            else:
-                matches = [t for t in all_tools if norm in t.lower()]
-                scoped.extend(matches)
-
-        # Retain skill tools and tools required by declared skills
-        if self.declared_skills or self.capabilities:
-            skill_tools = ["search_skills", "load_skill", "read_skill_reference", "execute_skill_script"]
-            for st in skill_tools:
-                if st in all_tools and st not in scoped:
-                    scoped.append(st)
-            if self.skill_registry:
-                for s_name in (self.declared_skills or []):
-                    manifest = self.skill_registry.get_skill(s_name)
-                    if manifest and manifest.required_tools:
-                        for req_t in manifest.required_tools:
-                            if req_t in all_tools and req_t not in scoped:
-                                scoped.append(req_t)
-
-        valid_tools = [t for t in set(scoped) if t in all_tools or t == "complete_task"]
-        return valid_tools or all_tools
+        from runtime.tool_policy import ToolPolicyEngine
+        allowed = set(self.declared_tools) if self.declared_tools and "*" not in self.declared_tools else None
+        executable_tools = ToolPolicyEngine.get_executable_tools(allowed_tools=allowed)
+        tools = [getattr(t, "name", str(t)) for t in executable_tools]
+        if "complete_task" not in tools:
+            tools.append("complete_task")
+        return tools
 
     def build_system_prompt(self, active_skills: Optional[List[str]] = None) -> str:
         """
@@ -185,7 +145,7 @@ Instructions:
         timeout_seconds = kwargs.get("timeout_seconds")
 
         effective_model = kwargs.get("model") or self.model
-        loop_result = self.react_loop.run(
+        loop_result = self.execution_loop.run(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             model=effective_model,

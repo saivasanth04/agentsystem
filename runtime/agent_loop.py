@@ -43,6 +43,7 @@ class AgentExecutionLoop:
         self,
         llm_client: Optional[Any] = None,
         tool_dispatcher: Optional[Any] = None,
+        dispatcher: Optional[Any] = None,
         capability_router: Optional[CapabilityRouter] = None,
         permission_engine: Optional[PermissionEngine] = None,
         observation_engine: Optional[ObservationEngine] = None,
@@ -55,6 +56,7 @@ class AgentExecutionLoop:
         repository_brain: Optional[Any] = None,
         max_iterations: int = 15,
         default_model: str = "gpt-4o",
+        **kwargs: Any,
     ):
         self.llm_client = llm_client
         self.max_iterations = max_iterations
@@ -68,8 +70,9 @@ class AgentExecutionLoop:
         self.repository_brain = repository_brain
 
         # Unified tool dispatcher
-        if tool_dispatcher is not None:
-            self.dispatcher = tool_dispatcher
+        eff_disp = tool_dispatcher or dispatcher
+        if eff_disp is not None:
+            self.dispatcher = eff_disp
         else:
             try:
                 from agent_orchestrator.tools.dispatcher import UnifiedToolDispatcher
@@ -122,21 +125,27 @@ class AgentExecutionLoop:
 
     def run(
         self,
-        task_objective: str,
+        task_objective: str = "",
         active_skills: Optional[List[str]] = None,
         agent_id: Optional[str] = None,
         max_iterations: Optional[int] = None,
         initial_context: Optional[Any] = None,
+        system_prompt: Optional[str] = None,
+        user_prompt: Optional[str] = None,
+        available_tools: Optional[List[str]] = None,
+        model: Optional[str] = None,
+        **kwargs: Any,
     ) -> ExecutionState:
         """
         Executes the full Claude-style execution loop:
         Reason -> Select Tool -> Execute -> Observation -> State Update -> Context Rebuild -> Reason Again
         """
-        effective_max = max_iterations or self.max_iterations
+        effective_objective = task_objective or user_prompt or kwargs.get("task_prompt") or "Execute task"
+        effective_max = max_iterations or kwargs.get("max_turns") or self.max_iterations
 
         # 1. Resolve agent configuration if agent_id is provided
-        agent_persona = None
-        if agent_id and self.agent_registry:
+        agent_persona = system_prompt
+        if agent_id and self.agent_registry and not agent_persona:
             try:
                 agent_meta = self.agent_registry.get_agent(agent_id)
                 if agent_meta:
@@ -145,13 +154,16 @@ class AgentExecutionLoop:
                 logger.debug(f"Agent registry lookup: {e}")
 
         # 2. Derive task capabilities and scoped tool policy
-        capabilities = self.router.route_task(task_objective, active_skills=active_skills)
-        tool_policy = self.router.get_tool_policy_for_task(task_objective, active_skills=active_skills)
-        allowed_tools = self.router.get_allowed_tools_for_task(task_objective, active_skills=active_skills)
+        capabilities = self.router.route_task(effective_objective, active_skills=active_skills)
+        tool_policy = self.router.get_tool_policy_for_task(effective_objective, active_skills=active_skills)
+        allowed_tools = self.router.get_allowed_tools_for_task(effective_objective, active_skills=active_skills)
+
+        if available_tools:
+            allowed_tools = [t for t in allowed_tools if t in available_tools or t.replace("filesystem.", "").replace("terminal.", "") in available_tools]
 
         # 3. Initialize ExecutionState
         state = ExecutionState(
-            task_objective=task_objective,
+            task_objective=effective_objective,
             iteration=0,
             max_iterations=effective_max,
             status=LoopStatus.RUNNING,
@@ -666,3 +678,7 @@ class AgentExecutionLoop:
             return new_state
 
         return agent_loop_node
+
+    execute = run
+    run_loop = run
+

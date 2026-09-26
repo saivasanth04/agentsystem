@@ -297,8 +297,9 @@ class CoderAgent(BaseAgent):
 
         prompt = assembler.assemble(sections)
         system_prompt = self.build_system_prompt(active_skills=active_skills)
-        raw_tools = self.tool_registry.get_tools_for_agent(self.name) if hasattr(self.tool_registry, "get_tools_for_agent") else []
-        coder_tools = [getattr(t, "name", str(t)) for t in raw_tools]
+        from runtime.tool_policy import ToolPolicyEngine
+        executable = ToolPolicyEngine.get_executable_tools(allowed_tools={"write_file", "replace_file_content", "edit_file", "read_file", "list_directory", "ast_syntax_check", "regex_grep", "complete_task"})
+        coder_tools = [getattr(t, "name", str(t)) for t in executable]
 
         state_store = kwargs.get("state_store")
         session_id = kwargs.get("session_id")
@@ -317,7 +318,7 @@ class CoderAgent(BaseAgent):
         require_verification = kwargs.get("require_verification", getattr(self, "require_verification", None))
 
         effective_model = kwargs.get("model") or self.model
-        loop_result = self.react_loop.run(
+        loop_result = self.execution_loop.run(
             system_prompt=system_prompt,
             user_prompt=prompt,
             model=effective_model,

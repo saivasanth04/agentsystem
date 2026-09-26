@@ -615,11 +615,32 @@ async def dry_run_task(req: DryRunRequest):
             "running_tasks": 0,
         }
 
+        # Estimate tokens and cost dynamically from matched files and subtasks (Fix 12)
+        total_tokens = 0
+        for fp in matched_files:
+            p = ws_dir / fp
+            if p.is_file():
+                try:
+                    total_tokens += len(p.read_text(encoding="utf-8", errors="ignore")) // 4
+                except Exception:
+                    pass
+        prompt_overhead = len(nodes) * 500
+        total_estimated_tokens = total_tokens + prompt_overhead
+
+        if total_estimated_tokens > 0:
+            estimated_cost_usd = round((total_estimated_tokens / 1000) * 0.005, 5)
+            estimate_available = True
+        else:
+            total_estimated_tokens = None
+            estimated_cost_usd = None
+            estimate_available = False
+
         return {
             "success": True,
             "dag": dag_snapshot,
-            "estimated_cost_usd": 0.045,
-            "estimated_tokens": 18500,
+            "estimate_available": estimate_available,
+            "estimated_cost_usd": estimated_cost_usd,
+            "estimated_tokens": total_estimated_tokens,
         }
     except Exception as e:
         logger.error(f"Dry run error: {e}")

@@ -6,8 +6,14 @@ Reason -> Select Tool -> Execute -> Observation -> State Update -> Context Rebui
 """
 from .tool_policy import (
     ToolPolicy,
+    ToolPolicyEngine,
     DEFAULT_TOOL_ALIASES,
     CAPABILITY_TO_TOOLS,
+)
+from .tool_state_machine import (
+    ToolLifecycleState,
+    ToolStateMachine,
+    ManagedTool,
 )
 from .capability_router import (
     CapabilityRouter,
@@ -36,6 +42,10 @@ from .agent_loop import (
 
 __all__ = [
     "ToolPolicy",
+    "ToolPolicyEngine",
+    "ToolLifecycleState",
+    "ToolStateMachine",
+    "ManagedTool",
     "DEFAULT_TOOL_ALIASES",
     "CAPABILITY_TO_TOOLS",
     "CapabilityRouter",

@@ -150,11 +150,10 @@ class TestCapabilityRouter:
         assert "browser_network" in tool_names
         assert "browser_snapshot" in tool_names
 
-        # Call adapter
+        # Call adapter: when real browser server is not running, returns success=False with MISSING state (Fix 7 Zero Fakes)
         res = router.browser_adapter.call_tool("browser.inspect", {"selector": "#main-app"})
-        assert res["success"] is True
-        assert res["protocol"] == "ChromeDevTools-MCP"
-        assert res["arguments"]["selector"] == "#main-app"
+        assert res["success"] is False
+        assert res.get("state") == "MISSING" or "not available" in res.get("error", "").lower()
 
     def test_route_task_to_capabilities(self, core_systems):
         router = CapabilityRouter(
@@ -191,6 +190,8 @@ class TestCapabilityRouter:
     def test_get_tool_schemas_for_task(self, core_systems):
         router = CapabilityRouter(dispatcher=core_systems["dispatcher"])
 
+        # When browser is available, verify schema exposure complying with OpenAI/LiteLLM format
+        router.browser_adapter.is_available = lambda: True
         schemas = router.get_tool_schemas_for_task("Inspect browser console for JavaScript errors")
         schema_names = [s.get("function", {}).get("name") for s in schemas]
 

@@ -285,11 +285,12 @@ class ReviewerAgent(BaseAgent):
 
         prompt = assembler.assemble(sections)
         system_prompt = self.build_system_prompt(active_skills=active_skills)
-        raw_tools = self.tool_registry.get_tools_for_agent(self.name) if hasattr(self.tool_registry, "get_tools_for_agent") else []
-        reviewer_tools = [getattr(t, "name", str(t)) for t in raw_tools]
+        from runtime.tool_policy import ToolPolicyEngine
+        executable = ToolPolicyEngine.get_executable_tools(allowed_tools={"read_file", "list_directory", "git_diff", "git_status", "find_symbol", "complete_task"})
+        reviewer_tools = [getattr(t, "name", str(t)) for t in executable]
 
         effective_model = kwargs.get("model") or self.model
-        loop_result = self.react_loop.run(
+        loop_result = self.execution_loop.run(
             system_prompt=system_prompt,
             user_prompt=prompt,
             model=effective_model,

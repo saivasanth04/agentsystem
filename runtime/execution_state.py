@@ -133,23 +133,56 @@ class ExecutionState:
         self.completed_at = datetime.now(timezone.utc).isoformat()
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serializes execution state to a JSON-safe dictionary."""
+        """Serializes execution state to a JSON-safe dictionary compatible with legacy and modern runtimes."""
+        events = [{"tool": tc.get("tool"), "args": tc.get("arguments", {}), "iteration": tc.get("iteration")} for tc in self.tool_calls]
         return {
             "task_objective": self.task_objective,
             "iteration": self.iteration,
+            "turns_taken": self.iteration,
             "max_iterations": self.max_iterations,
             "status": self.status,
+            "success": self.status == LoopStatus.COMPLETED,
+            "final_response": self.final_response or "",
+            "final_output": self.final_response or "",
             "active_skills": self.active_skills,
             "capabilities": self.capabilities,
             "allowed_tools": self.allowed_tools,
+            "tools_used": sorted(list({tc.get("tool") for tc in self.tool_calls if tc.get("tool")})),
+            "tool_calls": self.tool_calls,
+            "history_events": events,
+            "tool_history": events,
+            "reasoning_history": self.reasoning_history,
             "reasoning_history_count": len(self.reasoning_history),
             "tool_calls_count": len(self.tool_calls),
             "observations_count": len(self.observations),
+            "observations": [o.to_dict() for o in self.observations],
+            "active_errors": [o.to_dict() for o in self.get_active_errors()],
             "active_errors_count": len(self.get_active_errors()),
+            "errors": self.get_active_error_evidence(),
+            "working_memory": self.working_memory,
             "working_memory_keys": list(self.working_memory.keys()),
+            "diff": self.diff,
             "diff_length": len(self.diff),
             "exit_reason": self.exit_reason,
             "started_at": self.started_at,
             "completed_at": self.completed_at,
-            "observations": [o.to_dict() for o in self.observations],
         }
+
+    def __getitem__(self, key: str) -> Any:
+        return self.to_dict()[key]
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self.to_dict().get(key, default)
+
+    def __contains__(self, key: str) -> bool:
+        return key in self.to_dict()
+
+    def keys(self):
+        return self.to_dict().keys()
+
+    def items(self):
+        return self.to_dict().items()
+
+    def values(self):
+        return self.to_dict().values()
+

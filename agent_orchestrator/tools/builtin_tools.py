@@ -11,7 +11,7 @@ import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Union
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 from .workspace import WorkspaceManager
@@ -1296,6 +1296,16 @@ class BuiltinToolRegistry:
         if self.complete_task_tool.name not in seen:
             resolved.append(self.complete_task_tool)
         return resolved
+
+    def get_executable_tools(self, allowed_tools: Optional[Set[str]] = None) -> List[Any]:
+        """Delegates to ToolPolicyEngine to enforce strict EXECUTABLE lifecycle state."""
+        from runtime.tool_policy import ToolPolicyEngine
+        return ToolPolicyEngine.get_executable_tools(allowed_tools=allowed_tools)
+
+    def get_executable_schemas(self, allowed_tools: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
+        """Delegates to ToolPolicyEngine to return model tool schemas for EXECUTABLE tools only."""
+        from runtime.tool_policy import ToolPolicyEngine
+        return ToolPolicyEngine.get_executable_schemas(allowed_tools=allowed_tools)
 
     def get_tools_for_agent(self, agent_name: str) -> List[Any]:
         """Returns the specific tools allowed for a given agent."""

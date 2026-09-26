@@ -243,3 +243,59 @@ class ToolPolicy:
             "read_only": self.read_only,
             "rate_limits": self.rate_limits,
         }
+
+
+class ToolPolicyEngine:
+    """
+    Authoritative Tool Policy Engine.
+    Ensures that every tool exposure path delegates to this engine,
+    and that ONLY tools in EXECUTABLE lifecycle state reach model schemas.
+    """
+    _state_machine: Optional[Any] = None
+
+    @classmethod
+    def get_state_machine(cls) -> Any:
+        if cls._state_machine is None:
+            from .tool_state_machine import ToolStateMachine
+            cls._state_machine = ToolStateMachine()
+        return cls._state_machine
+
+    @classmethod
+    def set_state_machine(cls, sm: Any) -> None:
+        cls._state_machine = sm
+
+    @classmethod
+    def get_executable_tools(
+        cls,
+        allowed_tools: Optional[Set[str]] = None,
+        task: Optional[str] = None,
+        state_machine: Optional[Any] = None,
+    ) -> List[Any]:
+        """
+        Returns only tools that have reached EXECUTABLE state in the authoritative lifecycle.
+        """
+        sm = state_machine or cls.get_state_machine()
+        if allowed_tools:
+            for t_name in allowed_tools:
+                if sm.authorize(t_name, allowed_tools=allowed_tools):
+                    sm.promote_to_executable(t_name)
+        return sm.get_executable_tools()
+
+    @classmethod
+    def get_executable_schemas(
+        cls,
+        allowed_tools: Optional[Set[str]] = None,
+        task: Optional[str] = None,
+        state_machine: Optional[Any] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Strict invariant: Only EXECUTABLE tools may be exposed to the model.
+        Returns OpenAI-compatible schemas for all executable tools.
+        """
+        sm = state_machine or cls.get_state_machine()
+        if allowed_tools:
+            for t_name in allowed_tools:
+                if sm.authorize(t_name, allowed_tools=allowed_tools):
+                    sm.promote_to_executable(t_name)
+        return sm.get_executable_schemas()
+

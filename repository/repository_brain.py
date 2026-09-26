@@ -255,6 +255,8 @@ class RepositoryBrain:
         syms = self.symbols.find_symbol(name)
         return [s.to_dict() for s in syms]
 
+    search_symbols = find_symbol
+
     def get_symbol(self, name: str) -> Optional[Dict[str, Any]]:
         """Returns the first symbol matching name, or None."""
         syms = self.find_symbol(name)

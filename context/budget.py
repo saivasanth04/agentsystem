@@ -162,3 +162,76 @@ class ContextBudgetManager:
             "stream_consumed": self.consumed,
             "utilization_percent": round((total_used / self.total_budget) * 100, 2) if self.total_budget > 0 else 0.0,
         }
+
+
+def estimate_tokens(text: Optional[str], model: str = "cl100k_base") -> int:
+    """Exact or fast token estimation using TokenCounter."""
+    if not text:
+        return 0
+    return TokenCounter(model).count(text)
+
+
+@dataclass
+class ContextBudget:
+    """Configurable token ceilings per context section."""
+    system_instructions: int = 2000
+    working_memory: int = 1500
+    task_memory: int = 1000
+    episodic_memory: int = 1000
+    project_memory: int = 1500
+    semantic_memory: int = 800
+    task_scope: int = 3000
+    repo_outline: int = 2000
+    focal_files: int = 8000
+    interface_signatures: int = 3500
+    interaction_buffer: int = 12000
+    total_budget: int = 32000
+
+    @classmethod
+    def default(cls) -> "ContextBudget":
+        return cls()
+
+
+@dataclass
+class ContextSection:
+    """A distinct section in the prompt hierarchy with explicit priority."""
+    name: str
+    title: str
+    content: str
+    priority: int = 1  # 1 (highest) to 10 (lowest)
+    max_tokens: int = 2000
+    is_essential: bool = False
+    trust_level: Optional[Any] = None
+
+    @property
+    def estimated_tokens(self) -> int:
+        return estimate_tokens(self.content)
+
+
+class ContextAssembler:
+    """
+    Assembles prompt sections into a coherent, structured string within token limits.
+    """
+    def __init__(self, budget: Optional[ContextBudget] = None, token_counter: Optional[TokenCounter] = None):
+        self.budget = budget or ContextBudget.default()
+        self.counter = token_counter or TokenCounter()
+
+    def assemble(self, sections: List[ContextSection]) -> str:
+        sorted_sections = sorted(sections, key=lambda s: (s.priority, not s.is_essential))
+        assembled_parts = []
+        current_tokens = 0
+        limit = self.budget.total_budget
+
+        for s in sorted_sections:
+            if not s.content:
+                continue
+            trimmed = self.counter.truncate(s.content, s.max_tokens)
+            sec_tokens = self.counter.count(trimmed)
+            if current_tokens + sec_tokens > limit and not s.is_essential:
+                continue
+            header = f"# {s.title}\n" if s.title else ""
+            assembled_parts.append(f"{header}{trimmed}")
+            current_tokens += sec_tokens
+
+        return "\n\n".join(assembled_parts)
+

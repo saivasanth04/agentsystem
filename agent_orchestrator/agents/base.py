@@ -8,7 +8,7 @@ from ..tools.workspace import WorkspaceManager
 from ..tools.builtin_tools import BuiltinToolRegistry
 from ..tools.mcp_client import MCPClientAdapter
 from ..registry.skill_registry import SkillManager, SkillRegistry
-from ..runtime.react_loop import ReActAgentLoop
+from runtime.agent_loop import AgentExecutionLoop
 
 
 class BaseAgent:
@@ -39,7 +39,14 @@ class BaseAgent:
         self.approval_gate = approval_gate or PolicyBasedApprovalGate()
         self.extra_kwargs = kwargs
         self.reasoning_config = kwargs.get("reasoning_config")
-        self.react_loop = ReActAgentLoop(self.llm, self.tool_registry, approval_gate=self.approval_gate)
+        self.execution_loop = AgentExecutionLoop(
+            llm_client=self.llm,
+            workspace_manager=self.workspace,
+            skill_registry=self.skill_registry,
+            agent_registry=kwargs.get("agent_registry"),
+            mcp_manager=getattr(self.mcp_client, "mcp_manager", None),
+        )
+        self.react_loop = self.execution_loop
 
         import uuid
         self.agent_id = kwargs.get("agent_id") or f"agent-{self.name.lower()}-{uuid.uuid4().hex[:6]}"
@@ -55,11 +62,9 @@ class BaseAgent:
             f"Role: {self.role_description}",
         ]
 
-        # JIT Skill Injection: If specific skills are active for this task, inject their full instructions
+        # Skills are executable runtime policies (ToolPolicy, ContextPolicy), not passive markdown prompt injections
         if active_skills:
-            skill_instructions = self.skill_registry.load_many(active_skills)
-            if skill_instructions:
-                prompt_parts.append(f"\n{skill_instructions}")
+            prompt_parts.append(f"\nActive Runtime Skill Capabilities: {active_skills}")
 
         # Progressive disclosure: Ingest compact skill catalog and dynamic retrieval instructions
         catalog_summary = self.skill_registry.get_catalog_summary()
@@ -153,7 +158,7 @@ class BaseAgent:
             initial_messages.append({"role": "user", "content": user_input})
         start_turn = eff_frame.turn if eff_frame else 0
 
-        res = self.react_loop.run(
+        res = self.execution_loop.run(
             system_prompt=self.build_system_prompt(),
             user_prompt=user_input or "Resume execution",
             model=self.model,

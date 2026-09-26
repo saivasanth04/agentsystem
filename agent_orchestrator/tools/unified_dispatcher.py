@@ -683,6 +683,16 @@ class UnifiedToolDispatcher:
             return self.builtin_registry.get_all_tools()
         return []
 
+    def get_executable_tools(self, allowed_tools: Optional[Set[str]] = None) -> List[Any]:
+        """Delegates to ToolPolicyEngine to enforce strict EXECUTABLE lifecycle state."""
+        from runtime.tool_policy import ToolPolicyEngine
+        return ToolPolicyEngine.get_executable_tools(allowed_tools=allowed_tools)
+
+    def get_executable_schemas(self, allowed_tools: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
+        """Delegates to ToolPolicyEngine to return model tool schemas for EXECUTABLE tools only."""
+        from runtime.tool_policy import ToolPolicyEngine
+        return ToolPolicyEngine.get_executable_schemas(allowed_tools=allowed_tools)
+
     def __getattr__(self, name: str) -> Any:
         """Forward missing attributes/methods transparently to the underlying builtin registry."""
         if "builtin_registry" in self.__dict__ and hasattr(self.builtin_registry, name):

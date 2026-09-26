@@ -187,12 +187,18 @@ class ContextCompiler:
                     terms.update(re.findall(r"[A-Za-z0-9_]{3,}", e))
 
             if hasattr(repository_brain, "find_symbol"):
-                for term in list(terms)[:5]:
+                # Prioritize CamelCase / snake_case terms first
+                sorted_terms = sorted(terms, key=lambda t: (bool(re.search(r"[A-Z]", t)), len(t)), reverse=True)
+                for term in sorted_terms:
                     syms = repository_brain.find_symbol(term)
                     if syms:
-                        relevant_symbols.extend(syms[:2])
+                        for s in syms:
+                            if s not in relevant_symbols:
+                                relevant_symbols.append(s)
                         if not call_graph_info and hasattr(repository_brain, "get_call_graph"):
                             call_graph_info = repository_brain.get_call_graph(term)
+                    if len(relevant_symbols) >= 8:
+                        break
 
             repo_text = RepositorySlicer.slice_repository_context(relevant_symbols, call_graph_info)
             if repo_text:

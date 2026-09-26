@@ -67,6 +67,8 @@ class ProductionIDE:
         tool_dispatcher: Optional[UnifiedToolDispatcher] = None,
         llm_client: Optional[LLMClient] = None,
         repository_brain: Optional[RepositoryBrain] = None,
+        task_orchestrator: Optional[Any] = None,
+        execution_loop: Optional[AgentExecutionLoop] = None,
     ):
         # 1. Workspace
         self.workspace = workspace or WorkspaceManager()
@@ -131,6 +133,14 @@ class ProductionIDE:
             replan_engine=self.replanner,
             tool_dispatcher=self.dispatcher,
             llm_client=self.llm,
+        )
+
+        # 8. Unified Execution Spine Integration (TaskOrchestrator + AgentExecutionLoop)
+        self._orchestrator = task_orchestrator
+        self.execution_loop = execution_loop or AgentExecutionLoop(
+            llm_client=self.llm,
+            workspace_manager=self.workspace,
+            tool_dispatcher=self.dispatcher,
         )
 
     def edit(
@@ -211,6 +221,29 @@ class ProductionIDE:
         """Extracts workspace uncommitted changes using GitPython."""
         return self.verification_pipeline.get_git_diff()
 
+    @property
+    def orchestrator(self) -> Any:
+        """Lazily instantiates the authoritative TaskOrchestrator if not injected."""
+        if self._orchestrator is None:
+            from agent_orchestrator.orchestrator import TaskOrchestrator
+            self._orchestrator = TaskOrchestrator(
+                workspace=self.workspace,
+                llm=self.llm,
+                skill_registry=self.skill_registry,
+                agent_registry=self.agent_registry,
+                mcp_manager=self.mcp_manager,
+                tool_dispatcher=self.dispatcher,
+            )
+        return self._orchestrator
+
+    def run_task(self, user_request: str, **kwargs: Any) -> Any:
+        """Executes a task through the authoritative TaskOrchestrator execution spine."""
+        return self.orchestrator.run(user_request, **kwargs)
+
+    def execute_prompt(self, prompt: str, **kwargs: Any) -> Any:
+        """Executes a targeted prompt through the authoritative AgentExecutionLoop."""
+        return self.execution_loop.run(user_prompt=prompt, **kwargs)
+
     def get_status(self) -> Dict[str, Any]:
         """Provides status summary of the production IDE session."""
         return {
@@ -220,6 +253,8 @@ class ProductionIDE:
             "active_skills_count": len(self.skill_registry.list_skills()),
             "active_agents_count": len(self.agent_registry.list_agents()),
             "mcp_servers": self.mcp_manager.list_servers() if hasattr(self.mcp_manager, "list_servers") else [],
+            "orchestrator_available": True,
+            "execution_loop_available": True,
         }
 
     def create_langgraph_node(self) -> Callable[[Dict[str, Any]], Dict[str, Any]]:

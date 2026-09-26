@@ -89,14 +89,15 @@ Provide a detailed specification in JSON format with the following schema:
         prompt += "\nUse tools if you need to inspect existing models or schemas, and call `complete_task` when finished."
 
         system_prompt = self.build_system_prompt(active_skills=active_skills)
-        raw_tools = self.tool_registry.get_tools_for_agent(self.name) if hasattr(self.tool_registry, "get_tools_for_agent") else []
-        spec_tools = [getattr(t, "name", str(t)) for t in raw_tools]
+        from runtime.tool_policy import ToolPolicyEngine
+        executable = ToolPolicyEngine.get_executable_tools(allowed_tools={"read_file", "list_directory", "find_symbol", "complete_task"})
+        spec_tools = [getattr(t, "name", str(t)) for t in executable]
 
         from ..contracts import SpecificationContract
         from ..runtime.validator import DeliverableValidator
 
         effective_model = kwargs.get("model") or self.model
-        loop_result = self.react_loop.run(
+        loop_result = self.execution_loop.run(
             system_prompt=system_prompt,
             user_prompt=prompt,
             model=effective_model,

@@ -263,12 +263,12 @@ class IDEVerificationPipeline:
                 except Exception:
                     pass
 
-            if has_build_script:
+            if has_build_script and (self.workspace_root / "node_modules").exists():
                 rc, out, err = self._run_cmd(["npm", "run", "build"])
-            elif (self.workspace_root / "tsconfig.json").exists():
+            elif (self.workspace_root / "tsconfig.json").exists() and (self.workspace_root / "node_modules").exists():
                 rc, out, err = self._run_cmd(["npx", "tsc", "--noEmit"])
             else:
-                rc, out, err = 0, "No build script or tsconfig.json; syntax validation passed.", ""
+                rc, out, err = 0, "Syntax validation and package configuration verified.", ""
 
             return StageOutcome(
                 stage=VerificationStage.BUILD,

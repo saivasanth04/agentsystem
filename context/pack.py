@@ -248,3 +248,138 @@ class OptimizedContextPackage:
             "has_skills": bool(self.skills_section),
             "has_memory": bool(self.working_memory_section),
         }
+
+
+from enum import Enum
+import json
+
+
+class CompressionLevel(str, Enum):
+    NONE = "none"
+    WHITESPACE = "whitespace"
+    COMMENTS = "comments"
+    SKELETON = "skeleton"
+
+
+class CodeCompressor:
+    @staticmethod
+    def strip_whitespace(code: str) -> str:
+        lines = [line.rstrip() for line in code.splitlines()]
+        cleaned = []
+        prev_blank = False
+        for line in lines:
+            if not line:
+                if not prev_blank:
+                    cleaned.append("")
+                prev_blank = True
+            else:
+                cleaned.append(line)
+                prev_blank = False
+        return "\n".join(cleaned).strip()
+
+
+class JSONCompressor:
+    @staticmethod
+    def compress(data: Any, max_tokens: int = 3000) -> str:
+        if isinstance(data, str):
+            return data[:max_tokens * 4]
+        try:
+            dumped = json.dumps(data, indent=2, default=str)
+            if len(dumped) > max_tokens * 4:
+                return dumped[:max_tokens * 4] + "\n... [truncated]"
+            return dumped
+        except Exception:
+            return str(data)[:max_tokens * 4]
+
+
+class LogCompressor:
+    """Compresses compiler output, terminal logs, and test execution traces."""
+
+    ERROR_MARKERS = [
+        "error", "failed", "traceback", "exception", "syntaxerror",
+        "assertionerror", "fail:", "fatal:", "panic:", "err:"
+    ]
+
+    PASS_MARKERS = [
+        "passed", "ok", "success", "100%", "completed", "running"
+    ]
+
+    @classmethod
+    def compress(cls, log_text: str, max_lines: int = 40) -> str:
+        """
+        Compresses logs while strictly preserving error stack traces,
+        failing test assertions, and final summaries.
+        """
+        lines = log_text.splitlines()
+        if len(lines) <= max_lines:
+            return log_text
+
+        important_indices: Set[int] = set()
+        for i in range(min(3, len(lines))):
+            important_indices.add(i)
+        for i in range(max(0, len(lines) - 5), len(lines)):
+            important_indices.add(i)
+
+        for i, line in enumerate(lines):
+            low = line.lower()
+            if any(marker in low for marker in cls.ERROR_MARKERS):
+                for ctx in range(max(0, i - 2), min(len(lines), i + 5)):
+                    important_indices.add(ctx)
+
+        sorted_indices = sorted(important_indices)
+        output_lines: List[str] = []
+        prev_idx = -1
+
+        for idx in sorted_indices:
+            if prev_idx != -1 and idx > prev_idx + 1:
+                gap = idx - prev_idx - 1
+                output_lines.append(f"... [{gap} lines of logs/passes collapsed] ...")
+            output_lines.append(lines[idx])
+            prev_idx = idx
+
+        return "\n".join(output_lines)
+
+
+class ContextCompressor:
+    @staticmethod
+    def compress_text(text: str, level: CompressionLevel = CompressionLevel.WHITESPACE) -> str:
+        if level == CompressionLevel.NONE or not text:
+            return text
+        return CodeCompressor.strip_whitespace(text)
+
+    @classmethod
+    def compress(
+        cls,
+        content: str,
+        max_tokens: int,
+        content_hint: Optional[str] = None,
+    ) -> str:
+        if not content:
+            return ""
+        est_tokens = max(1, len(content) // 4)
+        if est_tokens <= max_tokens:
+            return content
+
+        hint = (content_hint or "").lower()
+        stripped = content.strip()
+        if hint == "json" or (stripped.startswith("{") and stripped.endswith("}")) or (stripped.startswith("[") and stripped.endswith("]")):
+            try:
+                compressed_json = JSONCompressor.compress(stripped, max_tokens=max_tokens)
+                if len(compressed_json) // 4 <= max_tokens:
+                    return compressed_json
+            except Exception:
+                pass
+
+        if hint in ("log", "terminal", "test_output") or "Traceback (most recent call last)" in content or "=== test session starts ===" in content:
+            compressed_log = LogCompressor.compress(content, max_lines=max(15, max_tokens // 4))
+            if len(compressed_log) // 4 <= max_tokens:
+                return compressed_log
+
+        if hint in ("code", "python") or "def " in content or "class " in content or "import " in content:
+            c_ws = CodeCompressor.strip_whitespace(content)
+            if len(c_ws) // 4 <= max_tokens:
+                return c_ws
+
+        norm = CodeCompressor.strip_whitespace(content)
+        return norm
+
