@@ -1,0 +1,2664 @@
+[
+  {
+    "name": "apply_diff_blocks",
+    "description": "Applies one or more Aider-style <<<<<<< SEARCH ... ======= ... >>>>>>> REPLACE blocks to an existing file.",
+    "capability_group": "filesystem",
+    "provenance": "WORKSPACE_DATA",
+    "source": "Builtin / FilesystemMCPServer",
+    "parameters": {
+      "filepath": {
+        "description": "Relative path to file in workspace",
+        "title": "Filepath",
+        "type": "string"
+      },
+      "diff_blocks": {
+        "description": "One or more Aider-style <<<<<<< SEARCH ... ======= ... >>>>>>> REPLACE blocks",
+        "title": "Diff Blocks",
+        "type": "string"
+      },
+      "fuzzy": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": true,
+        "description": "Whether to tolerate minor whitespace or indentation variations",
+        "title": "Fuzzy"
+      },
+      "expected_version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional version tag, revision (e.g. 'v1', 'a3f10c9b'), or SHA-256 hash of file when read, for optimistic concurrency control (Compare-And-Swap)",
+        "title": "Expected Version"
+      },
+      "expected_hash": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional SHA-256 base hash of file for optimistic concurrency control (Compare-And-Swap)",
+        "title": "Expected Hash"
+      },
+      "operation_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional unique idempotent operation ID",
+        "title": "Operation Id"
+      }
+    },
+    "required_parameters": [
+      "filepath",
+      "diff_blocks"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._apply_diff_blocks of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "apply_patch",
+    "description": "Applies standard unified diff patch (--- a/file +++ b/file @@ ... @@) across files in the workspace atomically.",
+    "capability_group": "general",
+    "provenance": "WORKSPACE_DATA",
+    "source": "Builtin / FilesystemMCPServer",
+    "parameters": {
+      "patch_content": {
+        "description": "Standard unified diff patch content (e.g. --- a/file +++ b/file @@ ... @@)",
+        "title": "Patch Content",
+        "type": "string"
+      },
+      "fuzz_factor": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": 2,
+        "description": "Line tolerance window when matching patch hunks",
+        "title": "Fuzz Factor"
+      },
+      "operation_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional unique idempotent operation ID",
+        "title": "Operation Id"
+      }
+    },
+    "required_parameters": [
+      "patch_content"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._apply_patch of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "ast_syntax_check",
+    "description": "Validates Python AST syntax (fail fast) before execution.",
+    "capability_group": "terminal",
+    "provenance": "EXECUTION_ENVIRONMENT",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "filepath": {
+        "description": "Relative path to Python file in workspace to validate syntax",
+        "title": "Filepath",
+        "type": "string"
+      }
+    },
+    "required_parameters": [
+      "filepath"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._syntax_check of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "complete_task",
+    "description": "Call this tool when you have finished the task and verified results.",
+    "capability_group": "general",
+    "provenance": "INTERNAL_CONTROL",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "summary": {
+        "description": "Summary of task deliverables, actions performed, and status",
+        "title": "Summary",
+        "type": "string"
+      },
+      "deliverables": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Key deliverables, generated files, or results",
+        "title": "Deliverables"
+      },
+      "evidence_type": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": "INSPECTION_CONFIRMED",
+        "description": "Type of evidence justifying completion: 'TEST_PASS', 'INSPECTION_CONFIRMED', 'SYNTAX_VALID', 'INFORMATION_SATURATED', 'GOAL_SATISFIED_EARLY'",
+        "title": "Evidence Type"
+      },
+      "proof_citation": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Explicit citation of empirical proof (e.g. test command output, exit code 0, ast check, or file observation)",
+        "title": "Proof Citation"
+      },
+      "confidence_score": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": 1.0,
+        "description": "Epistemic confidence that this task or goal is completely and correctly finished (0.0 - 1.0)",
+        "title": "Confidence Score"
+      },
+      "redundant_tasks": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional list of downstream task IDs that are no longer necessary if GOAL_SATISFIED_EARLY",
+        "title": "Redundant Tasks"
+      }
+    },
+    "required_parameters": [
+      "summary"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._complete_task of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": false
+  },
+  {
+    "name": "delegate_subtask",
+    "description": "Delegate a subtask to a specialized peer or dynamically spawned child agent.",
+    "capability_group": "swarm",
+    "provenance": "INTERNAL_CONTROL",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "subtask_objective": {
+        "description": "Objective of the subtask to execute",
+        "title": "Subtask Objective",
+        "type": "string"
+      },
+      "target_role": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Desired role of the worker agent",
+        "title": "Target Role"
+      },
+      "context": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Input data and context parameters",
+        "title": "Context"
+      }
+    },
+    "required_parameters": [
+      "subtask_objective"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._delegate_subtask of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": false
+  },
+  {
+    "name": "delete_file",
+    "description": "Deletes a file or directory safely from the workspace with OCC versioning.",
+    "capability_group": "general",
+    "provenance": "WORKSPACE_DATA",
+    "source": "Builtin / FilesystemMCPServer",
+    "parameters": {
+      "filepath": {
+        "description": "Relative path of file or directory in workspace to delete",
+        "title": "Filepath",
+        "type": "string"
+      },
+      "expected_version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional expected version tag or SHA-256 for OCC",
+        "title": "Expected Version"
+      },
+      "expected_hash": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional expected SHA-256 hash for OCC",
+        "title": "Expected Hash"
+      },
+      "operation_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional unique idempotent operation ID",
+        "title": "Operation Id"
+      }
+    },
+    "required_parameters": [
+      "filepath"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._delete_file of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "delete_lines",
+    "description": "Deletes a range of lines [start_line, end_line] from an existing file.",
+    "capability_group": "filesystem",
+    "provenance": "WORKSPACE_DATA",
+    "source": "Builtin / FilesystemMCPServer",
+    "parameters": {
+      "filepath": {
+        "description": "Relative path to file in workspace",
+        "title": "Filepath",
+        "type": "string"
+      },
+      "start_line": {
+        "description": "1-indexed starting line number of range to delete",
+        "title": "Start Line",
+        "type": "integer"
+      },
+      "end_line": {
+        "description": "1-indexed ending line number of range to delete (inclusive)",
+        "title": "End Line",
+        "type": "integer"
+      },
+      "expected_version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional version tag, revision (e.g. 'v1', 'a3f10c9b'), or SHA-256 hash of file when read, for optimistic concurrency control (Compare-And-Swap)",
+        "title": "Expected Version"
+      },
+      "expected_hash": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional SHA-256 base hash of file for optimistic concurrency control (Compare-And-Swap)",
+        "title": "Expected Hash"
+      },
+      "operation_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional unique idempotent operation ID",
+        "title": "Operation Id"
+      }
+    },
+    "required_parameters": [
+      "filepath",
+      "start_line",
+      "end_line"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._delete_lines of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "detect_project_environment",
+    "description": "Detects project programming language, framework, build tool, test runner, test commands, and source/test conventions.",
+    "capability_group": "general",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "path": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": "",
+        "description": "Optional subfolder path within workspace to inspect (default: workspace root)",
+        "title": "Path"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method BuiltinToolRegistry._detect_project_environment of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "discover_swarm_agents",
+    "description": "Discover active swarm agents by capability or role.",
+    "capability_group": "swarm",
+    "provenance": "INTERNAL_CONTROL",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "capability": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional capability filter",
+        "title": "Capability"
+      },
+      "role": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional role filter",
+        "title": "Role"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method BuiltinToolRegistry._discover_swarm_agents of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": false
+  },
+  {
+    "name": "execute_skill_script",
+    "description": "Executes an automation or verification script provided by a skill package.",
+    "capability_group": "skills",
+    "provenance": "EXECUTION_ENVIRONMENT",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "skill_name": {
+        "description": "Name of skill owning the executable script",
+        "title": "Skill Name",
+        "type": "string"
+      },
+      "script_name": {
+        "description": "Filename of script to execute (e.g. 'budget-summary.mjs', 'idea-refine.sh')",
+        "title": "Script Name",
+        "type": "string"
+      },
+      "args": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional command line arguments to pass to the script",
+        "title": "Args"
+      }
+    },
+    "required_parameters": [
+      "skill_name",
+      "script_name"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._execute_skill_script of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "find_references",
+    "description": "Finds all files, line numbers, and callers where a symbol is imported or used.",
+    "capability_group": "code_search",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "symbol_name": {
+        "description": "Name of symbol to find all usages, callers, and imports across workspace",
+        "title": "Symbol Name",
+        "type": "string"
+      }
+    },
+    "required_parameters": [
+      "symbol_name"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._find_references of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "find_symbol",
+    "description": "Searches AST symbols (classes, functions, methods) with line bounds, parameters, and docstrings.",
+    "capability_group": "code_search",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "symbol_name": {
+        "description": "Name or substring of class, function, or method to locate in codebase",
+        "title": "Symbol Name",
+        "type": "string"
+      }
+    },
+    "required_parameters": [
+      "symbol_name"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._find_symbol of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "generate_edit_plan",
+    "description": "Generates or refines a structured mutation plan (target files, symbols, edit actions, dependencies, and invariants).",
+    "capability_group": "planning_and_contracts",
+    "provenance": "INTERNAL_CONTROL",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "task_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Task ID to generate edit plan for (e.g. 'T-01')",
+        "title": "Task Id"
+      },
+      "objective": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Task objective or goal summary",
+        "title": "Objective"
+      },
+      "inputs": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "List of input files/modules",
+        "title": "Inputs"
+      },
+      "outputs": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "List of output files/symbols (e.g. ['src/models.py:User'])",
+        "title": "Outputs"
+      },
+      "acceptance_tests": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "List of acceptance test commands",
+        "title": "Acceptance Tests"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method BuiltinToolRegistry._generate_edit_plan of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": false
+  },
+  {
+    "name": "get_architecture_slice",
+    "description": "Retrieves the architectural slice, layer boundaries, and framework conventions for a specific target file.",
+    "capability_group": "code_search",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "target_file": {
+        "description": "Relative filepath in workspace to retrieve architectural layer, framework conventions, and entrypoint connections for",
+        "title": "Target File",
+        "type": "string"
+      }
+    },
+    "required_parameters": [
+      "target_file"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._get_architecture_slice of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "get_codebase_map",
+    "description": "Generates a compact hierarchical symbol outline map of classes and functions in the project.",
+    "capability_group": "code_search",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "path": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": "",
+        "description": "Optional directory path filter (empty for entire codebase)",
+        "title": "Path"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method BuiltinToolRegistry._get_codebase_map of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "get_dependencies",
+    "description": "Finds upstream imports/dependencies and downstream dependent files for a module or symbol.",
+    "capability_group": "code_search",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "target": {
+        "description": "Filepath (e.g. 'models/user.py') or Symbol name to find dependencies and dependents for",
+        "title": "Target",
+        "type": "string"
+      }
+    },
+    "required_parameters": [
+      "target"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._get_dependencies of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "get_edit_plan",
+    "description": "Retrieves the active structured edit plan and completion status of mutation steps.",
+    "capability_group": "planning_and_contracts",
+    "provenance": "INTERNAL_CONTROL",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "task_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Task ID to retrieve edit plan for",
+        "title": "Task Id"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method BuiltinToolRegistry._get_edit_plan of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": false
+  },
+  {
+    "name": "get_symbol_neighbors",
+    "description": "Retrieves upstream callers and downstream callees (1-2 hops) for a symbol directly from Codebase Memory.",
+    "capability_group": "code_search",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "symbol_name": {
+        "description": "Exact or qualified symbol name to inspect 1-2 hop neighborhood (callers, callees, classes)",
+        "title": "Symbol Name",
+        "type": "string"
+      },
+      "depth": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": 1,
+        "description": "Hop depth to traverse (1 or 2)",
+        "title": "Depth"
+      }
+    },
+    "required_parameters": [
+      "symbol_name"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._get_symbol_neighbors of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "get_task_artifact",
+    "description": "Retrieves the deliverable, summary, or outputs of a specific predecessor task on demand.",
+    "capability_group": "planning_and_contracts",
+    "provenance": "INTERNAL_CONTROL",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "task_id": {
+        "description": "ID of the predecessor task whose deliverable/artifact is requested (e.g. 'T-01')",
+        "title": "Task Id",
+        "type": "string"
+      }
+    },
+    "required_parameters": [
+      "task_id"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._get_task_artifact of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": false
+  },
+  {
+    "name": "get_workspace_changes",
+    "description": "Inspects file modifications, cryptographic hashes (before/after SHA-256), unified diffs, lines added/removed, and AST symbol changes in the workspace.",
+    "capability_group": "checkpoint",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "filepath": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional relative filepath to inspect changes for. If omitted, returns all workspace changes.",
+        "title": "Filepath"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method BuiltinToolRegistry._get_workspace_changes of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "git_blame",
+    "description": "Inspects line-by-line commit authorship and provenance for a file in Git.",
+    "capability_group": "git",
+    "provenance": "WORKSPACE_DATA",
+    "source": "GitMCPServer",
+    "parameters": {
+      "file_path": {
+        "description": "Relative path to file in workspace",
+        "title": "File Path",
+        "type": "string"
+      },
+      "start_line": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Starting line number (1-based)",
+        "title": "Start Line"
+      },
+      "end_line": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Ending line number (1-based)",
+        "title": "End Line"
+      }
+    },
+    "required_parameters": [
+      "file_path"
+    ],
+    "handler_reference": "<bound method GitMCPServer.git_blame of <agent_orchestrator.mcp.servers.git_server.GitMCPServer object at 0x000001BF2AE99400>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "git_branch",
+    "description": "Lists existing Git branches, creates a new branch, or deletes a branch.",
+    "capability_group": "git",
+    "provenance": "WORKSPACE_DATA",
+    "source": "GitMCPServer",
+    "parameters": {
+      "name": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Branch name to create or delete",
+        "title": "Name"
+      },
+      "delete": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": false,
+        "description": "Delete the specified branch",
+        "title": "Delete"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method GitMCPServer.git_branch of <agent_orchestrator.mcp.servers.git_server.GitMCPServer object at 0x000001BF2AE99400>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "git_checkout",
+    "description": "Switches Git branches or creates and switches to a new branch.",
+    "capability_group": "git",
+    "provenance": "WORKSPACE_DATA",
+    "source": "GitMCPServer",
+    "parameters": {
+      "target": {
+        "description": "Target branch name or commit hash",
+        "title": "Target",
+        "type": "string"
+      },
+      "create_branch": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": false,
+        "description": "Create a new branch (-b)",
+        "title": "Create Branch"
+      }
+    },
+    "required_parameters": [
+      "target"
+    ],
+    "handler_reference": "<bound method GitMCPServer.git_checkout of <agent_orchestrator.mcp.servers.git_server.GitMCPServer object at 0x000001BF2AE99400>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "git_commit",
+    "description": "Stages modified files and creates a new Git commit with a descriptive message.",
+    "capability_group": "git",
+    "provenance": "WORKSPACE_DATA",
+    "source": "GitMCPServer",
+    "parameters": {
+      "message": {
+        "description": "Commit message",
+        "title": "Message",
+        "type": "string"
+      },
+      "add_all": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": true,
+        "description": "Stage all modified files (-A)",
+        "title": "Add All"
+      },
+      "files": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Specific files to stage",
+        "title": "Files"
+      }
+    },
+    "required_parameters": [
+      "message"
+    ],
+    "handler_reference": "<bound method GitMCPServer.git_commit of <agent_orchestrator.mcp.servers.git_server.GitMCPServer object at 0x000001BF2AE99400>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "git_diff",
+    "description": "Generates Git diff of unstaged/staged changes or against a target branch/commit.",
+    "capability_group": "git",
+    "provenance": "WORKSPACE_DATA",
+    "source": "GitMCPServer",
+    "parameters": {
+      "target": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": "HEAD",
+        "description": "Branch, commit, or HEAD (default: HEAD)",
+        "title": "Target"
+      },
+      "staged": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": false,
+        "description": "Inspect staged changes only",
+        "title": "Staged"
+      },
+      "file_path": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional specific file path to diff",
+        "title": "File Path"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method GitMCPServer.git_diff of <agent_orchestrator.mcp.servers.git_server.GitMCPServer object at 0x000001BF2AE99400>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "git_init",
+    "description": "Initializes a new Git repository in the workspace with safe default configuration.",
+    "capability_group": "git",
+    "provenance": "WORKSPACE_DATA",
+    "source": "GitMCPServer",
+    "parameters": {},
+    "required_parameters": [],
+    "handler_reference": "<bound method GitMCPServer.git_init of <agent_orchestrator.mcp.servers.git_server.GitMCPServer object at 0x000001BF2AE99400>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "git_log",
+    "description": "Returns recent Git commit history log.",
+    "capability_group": "git",
+    "provenance": "WORKSPACE_DATA",
+    "source": "GitMCPServer",
+    "parameters": {
+      "max_count": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": 5,
+        "description": "Max number of commits to retrieve",
+        "title": "Max Count"
+      },
+      "file_path": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional file path to inspect commit history for",
+        "title": "File Path"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method GitMCPServer.git_log of <agent_orchestrator.mcp.servers.git_server.GitMCPServer object at 0x000001BF2AE99400>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "git_patch",
+    "description": "Exports a unified diff patch or applies a unified diff patch to the workspace.",
+    "capability_group": "git",
+    "provenance": "WORKSPACE_DATA",
+    "source": "GitMCPServer",
+    "parameters": {
+      "action": {
+        "description": "'export' (generate patch) or 'apply' (apply patch)",
+        "title": "Action",
+        "type": "string"
+      },
+      "patch_content": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Unified diff content to apply",
+        "title": "Patch Content"
+      }
+    },
+    "required_parameters": [
+      "action"
+    ],
+    "handler_reference": "<bound method GitMCPServer.git_patch of <agent_orchestrator.mcp.servers.git_server.GitMCPServer object at 0x000001BF2AE99400>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "git_restore",
+    "description": "Restores/discards modifications to working tree files or unstages files.",
+    "capability_group": "git",
+    "provenance": "WORKSPACE_DATA",
+    "source": "GitMCPServer",
+    "parameters": {
+      "file_path": {
+        "description": "Path to file to restore",
+        "title": "File Path",
+        "type": "string"
+      },
+      "staged": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": false,
+        "description": "Unstage changes from index (--staged)",
+        "title": "Staged"
+      }
+    },
+    "required_parameters": [
+      "file_path"
+    ],
+    "handler_reference": "<bound method GitMCPServer.git_restore of <agent_orchestrator.mcp.servers.git_server.GitMCPServer object at 0x000001BF2AE99400>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "git_show",
+    "description": "Inspects metadata, message, and diff of a specific Git commit.",
+    "capability_group": "git",
+    "provenance": "WORKSPACE_DATA",
+    "source": "GitMCPServer",
+    "parameters": {
+      "commit": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": "HEAD",
+        "description": "Commit hash or reference",
+        "title": "Commit"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method GitMCPServer.git_show of <agent_orchestrator.mcp.servers.git_server.GitMCPServer object at 0x000001BF2AE99400>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "git_status",
+    "description": "Returns Git working tree status (staged, unstaged, untracked files).",
+    "capability_group": "git",
+    "provenance": "WORKSPACE_DATA",
+    "source": "GitMCPServer",
+    "parameters": {
+      "short": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": true,
+        "description": "Return short output format",
+        "title": "Short"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method GitMCPServer.git_status of <agent_orchestrator.mcp.servers.git_server.GitMCPServer object at 0x000001BF2AE99400>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "handoff_to_agent",
+    "description": "Execute a stateful handoff to another agent, preserving hypotheses, active files, and diffs.",
+    "capability_group": "swarm",
+    "provenance": "INTERNAL_CONTROL",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "target_role": {
+        "description": "Role or instance ID of the recipient agent",
+        "title": "Target Role",
+        "type": "string"
+      },
+      "reason": {
+        "description": "Why handoff is being initiated",
+        "title": "Reason",
+        "type": "string"
+      },
+      "hypotheses": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Current working hypotheses",
+        "title": "Hypotheses"
+      },
+      "active_files": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Files currently being modified or inspected",
+        "title": "Active Files"
+      }
+    },
+    "required_parameters": [
+      "target_role",
+      "reason"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._handoff_to_agent of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": false
+  },
+  {
+    "name": "insert_lines",
+    "description": "Inserts content before or after a specific line number in an existing file.",
+    "capability_group": "filesystem",
+    "provenance": "WORKSPACE_DATA",
+    "source": "Builtin / FilesystemMCPServer",
+    "parameters": {
+      "filepath": {
+        "description": "Relative path to file in workspace",
+        "title": "Filepath",
+        "type": "string"
+      },
+      "line_number": {
+        "description": "1-indexed line number where new lines should be inserted",
+        "title": "Line Number",
+        "type": "integer"
+      },
+      "content": {
+        "description": "New content/lines to insert into the file",
+        "title": "Content",
+        "type": "string"
+      },
+      "position": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": "after",
+        "description": "'after' to insert following line_number, or 'before' to prepend before line_number",
+        "title": "Position"
+      },
+      "expected_version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional version tag, revision (e.g. 'v1', 'a3f10c9b'), or SHA-256 hash of file when read, for optimistic concurrency control (Compare-And-Swap)",
+        "title": "Expected Version"
+      },
+      "expected_hash": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional SHA-256 base hash of file for optimistic concurrency control (Compare-And-Swap)",
+        "title": "Expected Hash"
+      },
+      "operation_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional unique idempotent operation ID",
+        "title": "Operation Id"
+      }
+    },
+    "required_parameters": [
+      "filepath",
+      "line_number",
+      "content"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._insert_lines of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "inspect_existing_tests",
+    "description": "Inspects repository for existing test suites, test frameworks (pytest, unittest, vitest, jest), conventions, fixtures, mocks, and CI test commands.",
+    "capability_group": "verification",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "path": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": "",
+        "description": "Optional subfolder path within workspace to inspect for existing tests (default: workspace root)",
+        "title": "Path"
+      },
+      "sample_files_count": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": 2,
+        "description": "Number of existing test files to sample for style and convention extraction",
+        "title": "Sample Files Count"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method BuiltinToolRegistry._inspect_existing_tests of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "install_skill",
+    "description": "Installs a skill from the skills.sh ecosystem or registers a new skill.",
+    "capability_group": "skills",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "skill_slug": {
+        "description": "Skill name or slug from skills.sh ecosystem (e.g. 'github/code-quality')",
+        "title": "Skill Slug",
+        "type": "string"
+      }
+    },
+    "required_parameters": [
+      "skill_slug"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._install_skill of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "list_directory",
+    "description": "Lists files and subdirectories in the workspace.",
+    "capability_group": "filesystem",
+    "provenance": "WORKSPACE_DATA",
+    "source": "Builtin / FilesystemMCPServer",
+    "parameters": {
+      "path": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": "",
+        "description": "Subdirectory path relative to workspace root (empty for root)",
+        "title": "Path"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method BuiltinToolRegistry._list_directory of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "load_skill",
+    "description": "Retrieves the full instructions, guidelines, scripts, and references for a specific skill from skills.sh.",
+    "capability_group": "skills",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "skill_name": {
+        "description": "Exact or fuzzy name of the skill to retrieve full guidelines, tools, and scripts for",
+        "title": "Skill Name",
+        "type": "string"
+      }
+    },
+    "required_parameters": [
+      "skill_name"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._load_skill of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "move_file",
+    "description": "Moves a source file into a target directory safely in workspace.",
+    "capability_group": "general",
+    "provenance": "WORKSPACE_DATA",
+    "source": "Builtin / FilesystemMCPServer",
+    "parameters": {
+      "source_filepath": {
+        "description": "Relative path of file to move",
+        "title": "Source Filepath",
+        "type": "string"
+      },
+      "target_dir": {
+        "description": "Relative directory path to move the file into",
+        "title": "Target Dir",
+        "type": "string"
+      },
+      "expected_version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional expected version tag or SHA-256 for OCC",
+        "title": "Expected Version"
+      },
+      "expected_hash": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional expected SHA-256 hash for OCC",
+        "title": "Expected Hash"
+      },
+      "overwrite": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": false,
+        "description": "Whether to overwrite if destination already exists",
+        "title": "Overwrite"
+      },
+      "operation_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional unique idempotent operation ID",
+        "title": "Operation Id"
+      }
+    },
+    "required_parameters": [
+      "source_filepath",
+      "target_dir"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._move_file of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "post_to_blackboard",
+    "description": "Publish an intermediate observation, finding, or deliverable to the shared blackboard.",
+    "capability_group": "swarm",
+    "provenance": "INTERNAL_CONTROL",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "topic": {
+        "description": "Topic category (e.g. 'architecture', 'findings')",
+        "title": "Topic",
+        "type": "string"
+      },
+      "key": {
+        "description": "Lookup key",
+        "title": "Key",
+        "type": "string"
+      },
+      "data": {
+        "description": "Data payload or summary",
+        "title": "Data"
+      },
+      "confidence": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": 1.0,
+        "description": "Confidence score from 0.0 to 1.0",
+        "title": "Confidence"
+      }
+    },
+    "required_parameters": [
+      "topic",
+      "key",
+      "data"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._post_to_blackboard of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": false
+  },
+  {
+    "name": "query_architecture",
+    "description": "Searches active project architecture blueprint for component structures, class signatures, and file layouts on demand.",
+    "capability_group": "planning_and_contracts",
+    "provenance": "INTERNAL_CONTROL",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "module_name": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional module or component name to search (e.g. 'cache', 'storage', 'auth')",
+        "title": "Module Name"
+      },
+      "query": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional search term for class, function, or design pattern",
+        "title": "Query"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method BuiltinToolRegistry._query_architecture of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": false
+  },
+  {
+    "name": "query_codebase_graph",
+    "description": "Queries Codebase Memory (CBM) to retrieve a token-bounded sub-graph of related symbols, interfaces, and dependencies using GraphRAG.",
+    "capability_group": "code_search",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "query": {
+        "description": "Natural language query or concept to retrieve a focused sub-graph slice for (e.g. 'authentication tokens', 'rate limiter')",
+        "title": "Query",
+        "type": "string"
+      },
+      "max_tokens": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": 2000,
+        "description": "Token ceiling for returned sub-graph slice",
+        "title": "Max Tokens"
+      },
+      "traversal": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": "bfs",
+        "description": "Traversal strategy: 'bfs' or 'dfs'",
+        "title": "Traversal"
+      }
+    },
+    "required_parameters": [
+      "query"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._query_codebase_graph of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "query_specification",
+    "description": "Searches active project specifications for functional requirements, schemas, edge cases, and acceptance criteria on demand.",
+    "capability_group": "planning_and_contracts",
+    "provenance": "INTERNAL_CONTROL",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "query": {
+        "description": "Search keyword, concept, or requirement ID (e.g. 'FR-1', 'cache', 'authentication', 'timeout')",
+        "title": "Query",
+        "type": "string"
+      },
+      "section": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional section to restrict search: functional_requirements, edge_cases, acceptance_criteria, non_functional_requirements",
+        "title": "Section"
+      }
+    },
+    "required_parameters": [
+      "query"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._query_specification of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": false
+  },
+  {
+    "name": "read_file",
+    "description": "Reads file contents from workspace with optional start_line and end_line slice window.",
+    "capability_group": "filesystem",
+    "provenance": "WORKSPACE_DATA",
+    "source": "Builtin / FilesystemMCPServer",
+    "parameters": {
+      "filepath": {
+        "description": "Relative path to file in workspace",
+        "title": "Filepath",
+        "type": "string"
+      },
+      "start_line": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional 1-indexed start line number",
+        "title": "Start Line"
+      },
+      "end_line": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional 1-indexed end line number",
+        "title": "End Line"
+      }
+    },
+    "required_parameters": [
+      "filepath"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._read_file of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "read_from_blackboard",
+    "description": "Read a specific observation or finding from the shared blackboard.",
+    "capability_group": "swarm",
+    "provenance": "INTERNAL_CONTROL",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "topic": {
+        "description": "Topic category",
+        "title": "Topic",
+        "type": "string"
+      },
+      "key": {
+        "description": "Lookup key",
+        "title": "Key",
+        "type": "string"
+      }
+    },
+    "required_parameters": [
+      "topic",
+      "key"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._read_from_blackboard of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": false
+  },
+  {
+    "name": "read_skill_reference",
+    "description": "Reads reference material or rules associated with a skill (e.g. implementation.md, candidates.md).",
+    "capability_group": "skills",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "skill_name": {
+        "description": "Name of the skill owning the reference document or rule",
+        "title": "Skill Name",
+        "type": "string"
+      },
+      "reference_name": {
+        "description": "Name or filename of reference/rule document (e.g. 'floor-guard.md', 'candidates.md', 'rules')",
+        "title": "Reference Name",
+        "type": "string"
+      },
+      "start_line": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional 1-indexed start line number",
+        "title": "Start Line"
+      },
+      "end_line": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional 1-indexed end line number",
+        "title": "End Line"
+      }
+    },
+    "required_parameters": [
+      "skill_name",
+      "reference_name"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._read_skill_reference of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "record_project_memory",
+    "description": "Persists an architectural decision, bug pattern, convention, or API contract into long-term project memory.",
+    "capability_group": "memory",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "category": {
+        "description": "Category: ARCH_DECISION, BUG_PATTERN, CONVENTION, API_CONTRACT, GENERAL",
+        "title": "Category",
+        "type": "string"
+      },
+      "title": {
+        "description": "Concise title for the memory item",
+        "title": "Title",
+        "type": "string"
+      },
+      "content": {
+        "description": "Detailed content or architectural decision explanation",
+        "title": "Content",
+        "type": "string"
+      },
+      "tags": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Keywords or tags for retrieval",
+        "title": "Tags"
+      }
+    },
+    "required_parameters": [
+      "category",
+      "title",
+      "content"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._record_project_memory of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "regex_grep",
+    "description": "Searches function definitions, imports, or patterns across workspace files.",
+    "capability_group": "code_search",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "pattern": {
+        "description": "Text or regex pattern to search for across workspace files",
+        "title": "Pattern",
+        "type": "string"
+      },
+      "file_glob": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional glob filter, e.g. '*.py'",
+        "title": "File Glob"
+      }
+    },
+    "required_parameters": [
+      "pattern"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._grep_search of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "rename_file",
+    "description": "Renames or moves a file from old_filepath to new_filepath safely in workspace.",
+    "capability_group": "general",
+    "provenance": "WORKSPACE_DATA",
+    "source": "Builtin / FilesystemMCPServer",
+    "parameters": {
+      "old_filepath": {
+        "description": "Current relative path of the file in workspace",
+        "title": "Old Filepath",
+        "type": "string"
+      },
+      "new_filepath": {
+        "description": "Target new relative path of the file in workspace",
+        "title": "New Filepath",
+        "type": "string"
+      },
+      "expected_version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional expected version tag or SHA-256 for OCC",
+        "title": "Expected Version"
+      },
+      "expected_hash": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional expected SHA-256 hash for OCC",
+        "title": "Expected Hash"
+      },
+      "overwrite": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": false,
+        "description": "Whether to overwrite if new_filepath already exists",
+        "title": "Overwrite"
+      },
+      "operation_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional unique idempotent operation ID",
+        "title": "Operation Id"
+      }
+    },
+    "required_parameters": [
+      "old_filepath",
+      "new_filepath"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._rename_file of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "replace_file_content",
+    "description": "Replaces target_content substring with replacement_content in a file without rewriting the entire file.",
+    "capability_group": "filesystem",
+    "provenance": "WORKSPACE_DATA",
+    "source": "Builtin / FilesystemMCPServer",
+    "parameters": {
+      "filepath": {
+        "description": "Relative path to file in workspace",
+        "title": "Filepath",
+        "type": "string"
+      },
+      "target_content": {
+        "description": "Exact substring or lines to find and replace",
+        "title": "Target Content",
+        "type": "string"
+      },
+      "replacement_content": {
+        "description": "New content to replace target_content with",
+        "title": "Replacement Content",
+        "type": "string"
+      },
+      "start_line": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional 1-indexed start line number to constrain search",
+        "title": "Start Line"
+      },
+      "end_line": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional 1-indexed end line number to constrain search",
+        "title": "End Line"
+      },
+      "allow_multiple": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": false,
+        "description": "Whether to replace multiple occurrences",
+        "title": "Allow Multiple"
+      },
+      "fuzzy": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": true,
+        "description": "Whether to tolerate minor whitespace or indentation variations",
+        "title": "Fuzzy"
+      },
+      "expected_version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional version tag, revision (e.g. 'v1', 'a3f10c9b'), or SHA-256 hash of file when read, for optimistic concurrency control (Compare-And-Swap)",
+        "title": "Expected Version"
+      },
+      "expected_hash": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional SHA-256 base hash of file for optimistic concurrency control (Compare-And-Swap)",
+        "title": "Expected Hash"
+      },
+      "operation_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional unique idempotent operation ID",
+        "title": "Operation Id"
+      }
+    },
+    "required_parameters": [
+      "filepath",
+      "target_content",
+      "replacement_content"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._replace_file_content of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "request_consensus",
+    "description": "Initiate a swarm consensus vote on an issue or design decision.",
+    "capability_group": "swarm",
+    "provenance": "INTERNAL_CONTROL",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "issue": {
+        "description": "Description of the decision to make",
+        "title": "Issue",
+        "type": "string"
+      },
+      "options": {
+        "description": "List of options to vote on",
+        "items": {
+          "type": "string"
+        },
+        "title": "Options",
+        "type": "array"
+      },
+      "mechanism": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": "MAJORITY",
+        "description": "Voting mechanism: MAJORITY, CONFIDENCE_WEIGHTED, UNANIMOUS",
+        "title": "Mechanism"
+      }
+    },
+    "required_parameters": [
+      "issue",
+      "options"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._request_consensus of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": false
+  },
+  {
+    "name": "rollback_to_checkpoint",
+    "description": "Rolls back workspace files to a snapshot checkpoint, restoring modified files and deleting newly created files.",
+    "capability_group": "checkpoint",
+    "provenance": "INTERNAL_CONTROL",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "checkpoint_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Specific checkpoint ID to roll back to. If omitted, rolls back to the most recent pre-task or baseline checkpoint.",
+        "title": "Checkpoint Id"
+      },
+      "reason": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": "",
+        "description": "Reason for rolling back changes",
+        "title": "Reason"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method BuiltinToolRegistry._rollback_to_checkpoint of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": false
+  },
+  {
+    "name": "run_build_pipeline",
+    "description": "Executes staged build verification pipeline (INSTALL_DEPENDENCIES, BUILD, COMPILE_TYPECHECK, LINT, UNIT_TEST, INTEGRATION_TEST) with fail-fast diagnostics.",
+    "capability_group": "verification",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "stages": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional list of pipeline stages to run (INSTALL_DEPENDENCIES, BUILD, COMPILE_TYPECHECK, LINT, UNIT_TEST, INTEGRATION_TEST)",
+        "title": "Stages"
+      },
+      "fail_fast": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": true,
+        "description": "Whether to stop at first failing stage",
+        "title": "Fail Fast"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method BuiltinToolRegistry._run_build_pipeline of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "run_static_analysis",
+    "description": "Runs polyglot static analysis (ruff, mypy, pyright, eslint, tsc, semgrep, clippy, govet) with structured LSP diagnostics.",
+    "capability_group": "verification",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "files": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional list of specific files to analyze (e.g. ['src/app.py']). If omitted, analyzes all workspace files.",
+        "title": "Files"
+      },
+      "tools": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional list of specific tools to run (e.g. ['ruff', 'mypy', 'pyright', 'eslint', 'tsc', 'semgrep', 'clippy', 'govet']).",
+        "title": "Tools"
+      },
+      "categories": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional category filter: LINTER, TYPE_CHECKER, COMPILER, SAST.",
+        "title": "Categories"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method BuiltinToolRegistry._run_static_analysis of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "search_project_memory",
+    "description": "Searches long-term project memory for past architectural decisions, bug patterns, conventions, or API contracts.",
+    "capability_group": "memory",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "query": {
+        "description": "Natural language or keyword search query for project memory",
+        "title": "Query",
+        "type": "string"
+      },
+      "category": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional category: ARCH_DECISION, BUG_PATTERN, CONVENTION, API_CONTRACT, GENERAL",
+        "title": "Category"
+      },
+      "top_k": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": 5,
+        "description": "Maximum number of memory items to return",
+        "title": "Top K"
+      }
+    },
+    "required_parameters": [
+      "query"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._search_project_memory of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "search_skills",
+    "description": "Searches the Skill Registry for domain practices, tools, or handbooks by query or category.",
+    "capability_group": "skills",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "query": {
+        "description": "Query keyword, tag, or topic to search across available skills (e.g. 'react', 'debugging', 'owasp')",
+        "title": "Query",
+        "type": "string"
+      },
+      "category": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional domain category filter (python, react, database, git, security, code-review, architecture, deployment)",
+        "title": "Category"
+      }
+    },
+    "required_parameters": [
+      "query"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._search_skills of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "spawn_subagent",
+    "description": "Dynamically spawn a new specialized subagent with a scoped goal and token limit.",
+    "capability_group": "swarm",
+    "provenance": "INTERNAL_CONTROL",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "role": {
+        "description": "Specialized role (e.g. 'RESEARCHER', 'TESTER', 'REFACTOR')",
+        "title": "Role",
+        "type": "string"
+      },
+      "goal": {
+        "description": "Specific sub-goal for this agent",
+        "title": "Goal",
+        "type": "string"
+      },
+      "capabilities": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Required capabilities",
+        "title": "Capabilities"
+      },
+      "max_tokens": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": 50000,
+        "description": "Token limit quota for this subagent",
+        "title": "Max Tokens"
+      }
+    },
+    "required_parameters": [
+      "role",
+      "goal"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._spawn_subagent of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": false
+  },
+  {
+    "name": "spawn_subtasks",
+    "description": "Dynamically spawns child subtasks and grafts them into the active execution DAG.",
+    "capability_group": "general",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "parent_task_id": {
+        "description": "Task ID of current executing task (e.g. 'T-01')",
+        "title": "Parent Task Id",
+        "type": "string"
+      },
+      "subtasks": {
+        "description": "List of child subtasks with task_id, objective, capabilities, tools, inputs, outputs, acceptance_tests",
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Subtasks",
+        "type": "array"
+      }
+    },
+    "required_parameters": [
+      "parent_task_id",
+      "subtasks"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._spawn_subtasks of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "state_transition_logger",
+    "description": "Persists transition events, cycle counts, and checkpoint metadata.",
+    "capability_group": "general",
+    "provenance": "INTERNAL_CONTROL",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "from_node": {
+        "description": "Origin workflow node",
+        "title": "From Node",
+        "type": "string"
+      },
+      "to_node": {
+        "description": "Target workflow node",
+        "title": "To Node",
+        "type": "string"
+      },
+      "iteration": {
+        "description": "Current cycle/iteration count",
+        "title": "Iteration",
+        "type": "integer"
+      },
+      "details": {
+        "description": "Reason or summary of transition",
+        "title": "Details",
+        "type": "string"
+      }
+    },
+    "required_parameters": [
+      "from_node",
+      "to_node",
+      "iteration",
+      "details"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._log_state_transition of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": false
+  },
+  {
+    "name": "static_code_check",
+    "description": "Runs independent multi-tier static verification (AST/syntax, compiler/typecheck, linter, and runtime import smoke checks) on files or the entire workspace.",
+    "capability_group": "verification",
+    "provenance": "EXECUTION_ENVIRONMENT",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "filepath": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional relative path of specific file to verify, or leave empty to verify all changed/workspace files.",
+        "title": "Filepath"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method BuiltinToolRegistry._run_static_code_check of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "terminal_execute",
+    "description": "Executes a test runner, compiler, or build command in the workspace.",
+    "capability_group": "terminal",
+    "provenance": "EXECUTION_ENVIRONMENT",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "command": {
+        "description": "Shell command to execute in workspace directory (e.g. pytest, unittest, npm test)",
+        "title": "Command",
+        "type": "string"
+      },
+      "timeout": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": 30,
+        "description": "Timeout in seconds",
+        "title": "Timeout"
+      }
+    },
+    "required_parameters": [
+      "command"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._run_terminal_command of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "terminate_subagent",
+    "description": "Terminate an active subagent and all its child processes.",
+    "capability_group": "swarm",
+    "provenance": "INTERNAL_CONTROL",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "subagent_id": {
+        "description": "Instance ID of the subagent to terminate",
+        "title": "Subagent Id",
+        "type": "string"
+      },
+      "reason": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Reason for termination",
+        "title": "Reason"
+      }
+    },
+    "required_parameters": [
+      "subagent_id"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._terminate_subagent of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": false
+  },
+  {
+    "name": "update_edit_plan_step",
+    "description": "Updates the execution status (PENDING, IN_PROGRESS, COMPLETED, FAILED) of a specific mutation step.",
+    "capability_group": "planning_and_contracts",
+    "provenance": "INTERNAL_CONTROL",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "step_id": {
+        "description": "Step ID to update (e.g. 'step-1')",
+        "title": "Step Id",
+        "type": "string"
+      },
+      "status": {
+        "description": "New status: PENDING, IN_PROGRESS, COMPLETED, SKIPPED, FAILED",
+        "title": "Status",
+        "type": "string"
+      },
+      "error": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional error message if step failed",
+        "title": "Error"
+      }
+    },
+    "required_parameters": [
+      "step_id",
+      "status"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._update_edit_plan_step of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": false
+  },
+  {
+    "name": "update_scratchpad",
+    "description": "Appends a working finding, hypothesis, or note to the active working memory scratchpad.",
+    "capability_group": "memory",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "note": {
+        "description": "Working note, hypothesis, or verified fact to append to working memory",
+        "title": "Note",
+        "type": "string"
+      }
+    },
+    "required_parameters": [
+      "note"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._update_scratchpad of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "verify_ground_truth",
+    "description": "Evaluates deterministic ground-truth verification matrix (static analysis, build pipeline, baseline regressions, diff coverage, spec traceability, anti-tautology).",
+    "capability_group": "verification",
+    "provenance": "WORKSPACE_DATA",
+    "source": "BuiltinToolRegistry",
+    "parameters": {
+      "modified_files": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional list of modified files to evaluate against ground-truth gates.",
+        "title": "Modified Files"
+      }
+    },
+    "required_parameters": [],
+    "handler_reference": "<bound method BuiltinToolRegistry._verify_ground_truth of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  },
+  {
+    "name": "write_file",
+    "description": "Writes full content to a file in the workspace, creating parent directories if needed.",
+    "capability_group": "filesystem",
+    "provenance": "WORKSPACE_DATA",
+    "source": "Builtin / FilesystemMCPServer",
+    "parameters": {
+      "filepath": {
+        "description": "Relative path to file in workspace",
+        "title": "Filepath",
+        "type": "string"
+      },
+      "content": {
+        "description": "Full text content to write into the file",
+        "title": "Content",
+        "type": "string"
+      },
+      "expected_version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional version tag, revision (e.g. 'v1', 'a3f10c9b'), or SHA-256 hash of file when read, for optimistic concurrency control (Compare-And-Swap)",
+        "title": "Expected Version"
+      },
+      "expected_hash": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional SHA-256 base hash of file for optimistic concurrency control (Compare-And-Swap)",
+        "title": "Expected Hash"
+      },
+      "operation_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Optional unique idempotent operation ID",
+        "title": "Operation Id"
+      }
+    },
+    "required_parameters": [
+      "filepath",
+      "content"
+    ],
+    "handler_reference": "<bound method BuiltinToolRegistry._write_file of <agent_orchestrator.tools.builtin_tools.BuiltinToolRegistry object at 0x000001BF29A0DFD0>>",
+    "is_sandboxed": true
+  }
+]

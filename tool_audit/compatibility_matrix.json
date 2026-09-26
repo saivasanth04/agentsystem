@@ -1,0 +1,1213 @@
+[
+  {
+    "skill": "api-and-interface-design",
+    "required_tool": "find_symbol",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "api-and-interface-design",
+    "required_tool": "get_dependencies",
+    "exists": true,
+    "source": "MCP (mcp-server-memory) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "api-and-interface-design",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "api-and-interface-design",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "api-and-interface-design",
+    "required_tool": "write_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "browser-testing-with-devtools",
+    "required_tool": "browser.console",
+    "exists": false,
+    "source": "External MCP (@modelcontextprotocol/server-puppeteer or Chrome DevTools MCP)",
+    "action": "Import MCP Server (Do not write custom wrapper)"
+  },
+  {
+    "skill": "browser-testing-with-devtools",
+    "required_tool": "browser.inspect",
+    "exists": false,
+    "source": "External MCP (@modelcontextprotocol/server-puppeteer or Chrome DevTools MCP)",
+    "action": "Import MCP Server (Do not write custom wrapper)"
+  },
+  {
+    "skill": "browser-testing-with-devtools",
+    "required_tool": "browser.network",
+    "exists": false,
+    "source": "External MCP (@modelcontextprotocol/server-puppeteer or Chrome DevTools MCP)",
+    "action": "Import MCP Server (Do not write custom wrapper)"
+  },
+  {
+    "skill": "browser-testing-with-devtools",
+    "required_tool": "browser.snapshot",
+    "exists": false,
+    "source": "External MCP (@modelcontextprotocol/server-puppeteer or Chrome DevTools MCP)",
+    "action": "Import MCP Server (Do not write custom wrapper)"
+  },
+  {
+    "skill": "browser-testing-with-devtools",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "browser-testing-with-devtools",
+    "required_tool": "terminal_execute",
+    "exists": true,
+    "source": "MCP (mcp-server-terminal) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "ci-cd-and-automation",
+    "required_tool": "git_commit",
+    "exists": true,
+    "source": "MCP (mcp-server-git) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "ci-cd-and-automation",
+    "required_tool": "git_status",
+    "exists": true,
+    "source": "MCP (mcp-server-git) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "ci-cd-and-automation",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "ci-cd-and-automation",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "ci-cd-and-automation",
+    "required_tool": "terminal_execute",
+    "exists": true,
+    "source": "MCP (mcp-server-terminal) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "ci-cd-and-automation",
+    "required_tool": "write_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "code-review-and-quality",
+    "required_tool": "find_references",
+    "exists": true,
+    "source": "MCP (mcp-server-memory) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "code-review-and-quality",
+    "required_tool": "find_symbol",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "code-review-and-quality",
+    "required_tool": "git_diff",
+    "exists": true,
+    "source": "MCP (mcp-server-git) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "code-review-and-quality",
+    "required_tool": "list_directory",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "code-review-and-quality",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "code-review-and-quality",
+    "required_tool": "regex_grep",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "code-review-and-quality",
+    "required_tool": "run_static_analysis",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "code-review-and-quality",
+    "required_tool": "static_code_check",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "code-simplification",
+    "required_tool": "ast_syntax_check",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "code-simplification",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "code-simplification",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "code-simplification",
+    "required_tool": "static_code_check",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "code-simplification",
+    "required_tool": "terminal_execute",
+    "exists": true,
+    "source": "MCP (mcp-server-terminal) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "constraint-driven-development",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "constraint-driven-development",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "constraint-driven-development",
+    "required_tool": "terminal_execute",
+    "exists": true,
+    "source": "MCP (mcp-server-terminal) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "constraint-driven-development",
+    "required_tool": "verify_ground_truth",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "constraint-driven-development",
+    "required_tool": "write_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "context-engineering",
+    "required_tool": "get_codebase_map",
+    "exists": true,
+    "source": "MCP (mcp-server-memory) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "context-engineering",
+    "required_tool": "list_directory",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "context-engineering",
+    "required_tool": "load_skill",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "context-engineering",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "context-engineering",
+    "required_tool": "search_skills",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "debugging-and-error-recovery",
+    "required_tool": "ast_syntax_check",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "debugging-and-error-recovery",
+    "required_tool": "find_references",
+    "exists": true,
+    "source": "MCP (mcp-server-memory) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "debugging-and-error-recovery",
+    "required_tool": "find_symbol",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "debugging-and-error-recovery",
+    "required_tool": "get_workspace_changes",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "debugging-and-error-recovery",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "debugging-and-error-recovery",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "debugging-and-error-recovery",
+    "required_tool": "terminal_execute",
+    "exists": true,
+    "source": "MCP (mcp-server-terminal) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "deploy-to-vercel",
+    "required_tool": "list_directory",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "deploy-to-vercel",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "deploy-to-vercel",
+    "required_tool": "terminal_execute",
+    "exists": true,
+    "source": "MCP (mcp-server-terminal) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "deploy-to-vercel",
+    "required_tool": "vercel.cli",
+    "exists": true,
+    "source": "CLI via MCP Terminal (npx vercel)",
+    "action": "Reuse Terminal Execution (Do not create wrapper)"
+  },
+  {
+    "skill": "deprecation-and-migration",
+    "required_tool": "find_references",
+    "exists": true,
+    "source": "MCP (mcp-server-memory) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "deprecation-and-migration",
+    "required_tool": "find_symbol",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "deprecation-and-migration",
+    "required_tool": "get_dependencies",
+    "exists": true,
+    "source": "MCP (mcp-server-memory) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "deprecation-and-migration",
+    "required_tool": "get_impact_radius",
+    "exists": false,
+    "source": "\u2014",
+    "action": "Implement adapter"
+  },
+  {
+    "skill": "deprecation-and-migration",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "deprecation-and-migration",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "documentation-and-adrs",
+    "required_tool": "get_codebase_map",
+    "exists": true,
+    "source": "MCP (mcp-server-memory) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "documentation-and-adrs",
+    "required_tool": "list_directory",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "documentation-and-adrs",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "documentation-and-adrs",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "documentation-and-adrs",
+    "required_tool": "write_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "doubt-driven-development",
+    "required_tool": "find_references",
+    "exists": true,
+    "source": "MCP (mcp-server-memory) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "doubt-driven-development",
+    "required_tool": "find_symbol",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "doubt-driven-development",
+    "required_tool": "git_diff",
+    "exists": true,
+    "source": "MCP (mcp-server-git) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "doubt-driven-development",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "doubt-driven-development",
+    "required_tool": "regex_grep",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "doubt-driven-development",
+    "required_tool": "verify_ground_truth",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "frontend-ui-engineering",
+    "required_tool": "delete_lines",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "frontend-ui-engineering",
+    "required_tool": "insert_lines",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "frontend-ui-engineering",
+    "required_tool": "list_directory",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "frontend-ui-engineering",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "frontend-ui-engineering",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "frontend-ui-engineering",
+    "required_tool": "terminal_execute",
+    "exists": true,
+    "source": "MCP (mcp-server-terminal) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "frontend-ui-engineering",
+    "required_tool": "write_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "git-workflow-and-versioning",
+    "required_tool": "git_blame",
+    "exists": true,
+    "source": "MCP (mcp-server-git) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "git-workflow-and-versioning",
+    "required_tool": "git_branch",
+    "exists": true,
+    "source": "MCP (mcp-server-git) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "git-workflow-and-versioning",
+    "required_tool": "git_checkout",
+    "exists": true,
+    "source": "MCP (mcp-server-git) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "git-workflow-and-versioning",
+    "required_tool": "git_commit",
+    "exists": true,
+    "source": "MCP (mcp-server-git) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "git-workflow-and-versioning",
+    "required_tool": "git_diff",
+    "exists": true,
+    "source": "MCP (mcp-server-git) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "git-workflow-and-versioning",
+    "required_tool": "git_log",
+    "exists": true,
+    "source": "MCP (mcp-server-git) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "git-workflow-and-versioning",
+    "required_tool": "git_patch",
+    "exists": true,
+    "source": "MCP (mcp-server-git) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "git-workflow-and-versioning",
+    "required_tool": "git_restore",
+    "exists": true,
+    "source": "MCP (mcp-server-git) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "git-workflow-and-versioning",
+    "required_tool": "git_show",
+    "exists": true,
+    "source": "MCP (mcp-server-git) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "git-workflow-and-versioning",
+    "required_tool": "git_status",
+    "exists": true,
+    "source": "MCP (mcp-server-git) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "idea-refine",
+    "required_tool": "execute_skill_script",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "idea-refine",
+    "required_tool": "list_directory",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "idea-refine",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "idea-refine",
+    "required_tool": "write_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "incremental-implementation",
+    "required_tool": "ast_syntax_check",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "incremental-implementation",
+    "required_tool": "complete_task",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "incremental-implementation",
+    "required_tool": "generate_edit_plan",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "incremental-implementation",
+    "required_tool": "get_edit_plan",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "incremental-implementation",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "incremental-implementation",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "incremental-implementation",
+    "required_tool": "terminal_execute",
+    "exists": true,
+    "source": "MCP (mcp-server-terminal) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "incremental-implementation",
+    "required_tool": "update_edit_plan_step",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "interview-me",
+    "required_tool": "list_directory",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "interview-me",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "observability-and-instrumentation",
+    "required_tool": "find_symbol",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "observability-and-instrumentation",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "observability-and-instrumentation",
+    "required_tool": "regex_grep",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "observability-and-instrumentation",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "observability-and-instrumentation",
+    "required_tool": "terminal_execute",
+    "exists": true,
+    "source": "MCP (mcp-server-terminal) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "performance-optimization",
+    "required_tool": "find_symbol",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "performance-optimization",
+    "required_tool": "get_call_graph",
+    "exists": false,
+    "source": "\u2014",
+    "action": "Implement adapter"
+  },
+  {
+    "skill": "performance-optimization",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "performance-optimization",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "performance-optimization",
+    "required_tool": "run_build_pipeline",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "performance-optimization",
+    "required_tool": "terminal_execute",
+    "exists": true,
+    "source": "MCP (mcp-server-terminal) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "planning-and-task-breakdown",
+    "required_tool": "complete_task",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "planning-and-task-breakdown",
+    "required_tool": "get_architecture_summary",
+    "exists": false,
+    "source": "\u2014",
+    "action": "Implement adapter"
+  },
+  {
+    "skill": "planning-and-task-breakdown",
+    "required_tool": "get_codebase_map",
+    "exists": true,
+    "source": "MCP (mcp-server-memory) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "planning-and-task-breakdown",
+    "required_tool": "list_directory",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "planning-and-task-breakdown",
+    "required_tool": "query_codebase_graph",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "planning-and-task-breakdown",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "security-and-hardening",
+    "required_tool": "find_symbol",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "security-and-hardening",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "security-and-hardening",
+    "required_tool": "regex_grep",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "security-and-hardening",
+    "required_tool": "run_static_analysis",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "security-and-hardening",
+    "required_tool": "static_code_check",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "security-and-hardening",
+    "required_tool": "verify_ground_truth",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "shipping-and-launch",
+    "required_tool": "git_diff",
+    "exists": true,
+    "source": "MCP (mcp-server-git) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "shipping-and-launch",
+    "required_tool": "git_status",
+    "exists": true,
+    "source": "MCP (mcp-server-git) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "shipping-and-launch",
+    "required_tool": "run_build_pipeline",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "shipping-and-launch",
+    "required_tool": "terminal_execute",
+    "exists": true,
+    "source": "MCP (mcp-server-terminal) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "shipping-and-launch",
+    "required_tool": "verify_ground_truth",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "source-driven-development",
+    "required_tool": "find_symbol",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "source-driven-development",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "source-driven-development",
+    "required_tool": "regex_grep",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "source-driven-development",
+    "required_tool": "terminal_execute",
+    "exists": true,
+    "source": "MCP (mcp-server-terminal) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "spec-driven-development",
+    "required_tool": "list_directory",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "spec-driven-development",
+    "required_tool": "query_specification",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "spec-driven-development",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "spec-driven-development",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "spec-driven-development",
+    "required_tool": "write_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "test-driven-development",
+    "required_tool": "ast_syntax_check",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "test-driven-development",
+    "required_tool": "inspect_existing_tests",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "test-driven-development",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "test-driven-development",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "test-driven-development",
+    "required_tool": "terminal_execute",
+    "exists": true,
+    "source": "MCP (mcp-server-terminal) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "test-driven-development",
+    "required_tool": "write_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "using-agent-skills",
+    "required_tool": "execute_skill_script",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "using-agent-skills",
+    "required_tool": "load_skill",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "using-agent-skills",
+    "required_tool": "read_skill_reference",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "using-agent-skills",
+    "required_tool": "search_skills",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-cli-with-tokens",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-cli-with-tokens",
+    "required_tool": "terminal_execute",
+    "exists": true,
+    "source": "MCP (mcp-server-terminal) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-cli-with-tokens",
+    "required_tool": "vercel.cli",
+    "exists": true,
+    "source": "CLI via MCP Terminal (npx vercel)",
+    "action": "Reuse Terminal Execution (Do not create wrapper)"
+  },
+  {
+    "skill": "vercel-composition-patterns",
+    "required_tool": "ast_syntax_check",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-composition-patterns",
+    "required_tool": "find_symbol",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-composition-patterns",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-composition-patterns",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-optimize",
+    "required_tool": "execute_skill_script",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-optimize",
+    "required_tool": "list_directory",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-optimize",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-optimize",
+    "required_tool": "terminal_execute",
+    "exists": true,
+    "source": "MCP (mcp-server-terminal) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-react-best-practices",
+    "required_tool": "ast_syntax_check",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-react-best-practices",
+    "required_tool": "find_symbol",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-react-best-practices",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-react-best-practices",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-react-native-skills",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-react-native-skills",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-react-native-skills",
+    "required_tool": "terminal_execute",
+    "exists": true,
+    "source": "MCP (mcp-server-terminal) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-react-view-transitions",
+    "required_tool": "ast_syntax_check",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-react-view-transitions",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "vercel-react-view-transitions",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "web-design-guidelines",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "web-design-guidelines",
+    "required_tool": "regex_grep",
+    "exists": true,
+    "source": "Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "web-design-guidelines",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "writing-guidelines",
+    "required_tool": "list_directory",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "writing-guidelines",
+    "required_tool": "read_file",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  },
+  {
+    "skill": "writing-guidelines",
+    "required_tool": "replace_file_content",
+    "exists": true,
+    "source": "MCP (mcp-server-filesystem) / Builtin",
+    "action": "Reuse"
+  }
+]

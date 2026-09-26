@@ -1,0 +1,2676 @@
+{
+  "graph_metadata": {
+    "total_nodes": 120,
+    "total_edges": 390,
+    "generated_at": "2026-09-26",
+    "compliant_with": "Non-Negotiable Implementation Contract v1.0"
+  },
+  "nodes": [
+    {
+      "id": "runtime:SkillRegistry",
+      "type": "RuntimeComponent",
+      "label": "SkillRegistry",
+      "path": "agent_orchestrator/registry/skill_registry.py"
+    },
+    {
+      "id": "runtime:AgentRegistry",
+      "type": "RuntimeComponent",
+      "label": "AgentRegistry",
+      "path": "agent_orchestrator/registry/agent_registry.py"
+    },
+    {
+      "id": "runtime:MCPManager",
+      "type": "RuntimeComponent",
+      "label": "MCPManager",
+      "path": "agent_orchestrator/mcp/manager.py"
+    },
+    {
+      "id": "runtime:UnifiedToolDispatcher",
+      "type": "RuntimeComponent",
+      "label": "UnifiedToolDispatcher",
+      "path": "agent_orchestrator/tools/unified_dispatcher.py"
+    },
+    {
+      "id": "runtime:WorkspaceManager",
+      "type": "RuntimeComponent",
+      "label": "WorkspaceManager",
+      "path": "agent_orchestrator/tools/workspace.py"
+    },
+    {
+      "id": "runtime:LangGraph",
+      "type": "RuntimeComponent",
+      "label": "LangGraph StateGraph",
+      "path": "agent_orchestrator/orchestrator.py"
+    },
+    {
+      "id": "runtime:LiteLLMGateway",
+      "type": "RuntimeComponent",
+      "label": "Unified LiteLLM Gateway",
+      "path": "unified_gateway/gateway/server.py"
+    },
+    {
+      "id": "agent:PLANNER",
+      "type": "CoreAgent",
+      "label": "PLANNER"
+    },
+    {
+      "id": "agent:SPECIFICATION",
+      "type": "CoreAgent",
+      "label": "SPECIFICATION"
+    },
+    {
+      "id": "agent:ARCHITECTURE",
+      "type": "CoreAgent",
+      "label": "ARCHITECTURE"
+    },
+    {
+      "id": "agent:CODER",
+      "type": "CoreAgent",
+      "label": "CODER"
+    },
+    {
+      "id": "agent:TESTER",
+      "type": "CoreAgent",
+      "label": "TESTER"
+    },
+    {
+      "id": "agent:REVIEWER",
+      "type": "CoreAgent",
+      "label": "REVIEWER"
+    },
+    {
+      "id": "agent:database-architect",
+      "type": "DynamicAgent",
+      "label": "database-architect",
+      "category": "backend"
+    },
+    {
+      "id": "agent:python-debugger",
+      "type": "DynamicAgent",
+      "label": "python-debugger",
+      "category": "debugging"
+    },
+    {
+      "id": "agent:react-specialist",
+      "type": "DynamicAgent",
+      "label": "react-specialist",
+      "category": "frontend"
+    },
+    {
+      "id": "agent:security-auditor",
+      "type": "DynamicAgent",
+      "label": "security-auditor",
+      "category": "security"
+    },
+    {
+      "id": "mcp_server:mcp-server-filesystem",
+      "type": "MCPServer",
+      "label": "mcp-server-filesystem",
+      "health": "HEALTHY"
+    },
+    {
+      "id": "mcp_server:mcp-server-git",
+      "type": "MCPServer",
+      "label": "mcp-server-git",
+      "health": "HEALTHY"
+    },
+    {
+      "id": "mcp_server:mcp-server-terminal",
+      "type": "MCPServer",
+      "label": "mcp-server-terminal",
+      "health": "HEALTHY"
+    },
+    {
+      "id": "mcp_server:mcp-server-memory",
+      "type": "MCPServer",
+      "label": "mcp-server-memory",
+      "health": "HEALTHY"
+    },
+    {
+      "id": "tool:apply_diff_blocks",
+      "type": "Tool",
+      "label": "apply_diff_blocks",
+      "group": "filesystem"
+    },
+    {
+      "id": "tool:apply_patch",
+      "type": "Tool",
+      "label": "apply_patch",
+      "group": "general"
+    },
+    {
+      "id": "tool:ast_syntax_check",
+      "type": "Tool",
+      "label": "ast_syntax_check",
+      "group": "terminal"
+    },
+    {
+      "id": "tool:complete_task",
+      "type": "Tool",
+      "label": "complete_task",
+      "group": "general"
+    },
+    {
+      "id": "tool:delegate_subtask",
+      "type": "Tool",
+      "label": "delegate_subtask",
+      "group": "swarm"
+    },
+    {
+      "id": "tool:delete_file",
+      "type": "Tool",
+      "label": "delete_file",
+      "group": "general"
+    },
+    {
+      "id": "tool:delete_lines",
+      "type": "Tool",
+      "label": "delete_lines",
+      "group": "filesystem"
+    },
+    {
+      "id": "tool:detect_project_environment",
+      "type": "Tool",
+      "label": "detect_project_environment",
+      "group": "general"
+    },
+    {
+      "id": "tool:discover_swarm_agents",
+      "type": "Tool",
+      "label": "discover_swarm_agents",
+      "group": "swarm"
+    },
+    {
+      "id": "tool:execute_skill_script",
+      "type": "Tool",
+      "label": "execute_skill_script",
+      "group": "skills"
+    },
+    {
+      "id": "tool:find_references",
+      "type": "Tool",
+      "label": "find_references",
+      "group": "code_search"
+    },
+    {
+      "id": "tool:find_symbol",
+      "type": "Tool",
+      "label": "find_symbol",
+      "group": "code_search"
+    },
+    {
+      "id": "tool:generate_edit_plan",
+      "type": "Tool",
+      "label": "generate_edit_plan",
+      "group": "planning_and_contracts"
+    },
+    {
+      "id": "tool:get_architecture_slice",
+      "type": "Tool",
+      "label": "get_architecture_slice",
+      "group": "code_search"
+    },
+    {
+      "id": "tool:get_codebase_map",
+      "type": "Tool",
+      "label": "get_codebase_map",
+      "group": "code_search"
+    },
+    {
+      "id": "tool:get_dependencies",
+      "type": "Tool",
+      "label": "get_dependencies",
+      "group": "code_search"
+    },
+    {
+      "id": "tool:get_edit_plan",
+      "type": "Tool",
+      "label": "get_edit_plan",
+      "group": "planning_and_contracts"
+    },
+    {
+      "id": "tool:get_symbol_neighbors",
+      "type": "Tool",
+      "label": "get_symbol_neighbors",
+      "group": "code_search"
+    },
+    {
+      "id": "tool:get_task_artifact",
+      "type": "Tool",
+      "label": "get_task_artifact",
+      "group": "planning_and_contracts"
+    },
+    {
+      "id": "tool:get_workspace_changes",
+      "type": "Tool",
+      "label": "get_workspace_changes",
+      "group": "checkpoint"
+    },
+    {
+      "id": "tool:git_blame",
+      "type": "Tool",
+      "label": "git_blame",
+      "group": "git"
+    },
+    {
+      "id": "tool:git_branch",
+      "type": "Tool",
+      "label": "git_branch",
+      "group": "git"
+    },
+    {
+      "id": "tool:git_checkout",
+      "type": "Tool",
+      "label": "git_checkout",
+      "group": "git"
+    },
+    {
+      "id": "tool:git_commit",
+      "type": "Tool",
+      "label": "git_commit",
+      "group": "git"
+    },
+    {
+      "id": "tool:git_diff",
+      "type": "Tool",
+      "label": "git_diff",
+      "group": "git"
+    },
+    {
+      "id": "tool:git_init",
+      "type": "Tool",
+      "label": "git_init",
+      "group": "git"
+    },
+    {
+      "id": "tool:git_log",
+      "type": "Tool",
+      "label": "git_log",
+      "group": "git"
+    },
+    {
+      "id": "tool:git_patch",
+      "type": "Tool",
+      "label": "git_patch",
+      "group": "git"
+    },
+    {
+      "id": "tool:git_restore",
+      "type": "Tool",
+      "label": "git_restore",
+      "group": "git"
+    },
+    {
+      "id": "tool:git_show",
+      "type": "Tool",
+      "label": "git_show",
+      "group": "git"
+    },
+    {
+      "id": "tool:git_status",
+      "type": "Tool",
+      "label": "git_status",
+      "group": "git"
+    },
+    {
+      "id": "tool:handoff_to_agent",
+      "type": "Tool",
+      "label": "handoff_to_agent",
+      "group": "swarm"
+    },
+    {
+      "id": "tool:insert_lines",
+      "type": "Tool",
+      "label": "insert_lines",
+      "group": "filesystem"
+    },
+    {
+      "id": "tool:inspect_existing_tests",
+      "type": "Tool",
+      "label": "inspect_existing_tests",
+      "group": "verification"
+    },
+    {
+      "id": "tool:install_skill",
+      "type": "Tool",
+      "label": "install_skill",
+      "group": "skills"
+    },
+    {
+      "id": "tool:list_directory",
+      "type": "Tool",
+      "label": "list_directory",
+      "group": "filesystem"
+    },
+    {
+      "id": "tool:load_skill",
+      "type": "Tool",
+      "label": "load_skill",
+      "group": "skills"
+    },
+    {
+      "id": "tool:move_file",
+      "type": "Tool",
+      "label": "move_file",
+      "group": "general"
+    },
+    {
+      "id": "tool:post_to_blackboard",
+      "type": "Tool",
+      "label": "post_to_blackboard",
+      "group": "swarm"
+    },
+    {
+      "id": "tool:query_architecture",
+      "type": "Tool",
+      "label": "query_architecture",
+      "group": "planning_and_contracts"
+    },
+    {
+      "id": "tool:query_codebase_graph",
+      "type": "Tool",
+      "label": "query_codebase_graph",
+      "group": "code_search"
+    },
+    {
+      "id": "tool:query_specification",
+      "type": "Tool",
+      "label": "query_specification",
+      "group": "planning_and_contracts"
+    },
+    {
+      "id": "tool:read_file",
+      "type": "Tool",
+      "label": "read_file",
+      "group": "filesystem"
+    },
+    {
+      "id": "tool:read_from_blackboard",
+      "type": "Tool",
+      "label": "read_from_blackboard",
+      "group": "swarm"
+    },
+    {
+      "id": "tool:read_skill_reference",
+      "type": "Tool",
+      "label": "read_skill_reference",
+      "group": "skills"
+    },
+    {
+      "id": "tool:record_project_memory",
+      "type": "Tool",
+      "label": "record_project_memory",
+      "group": "memory"
+    },
+    {
+      "id": "tool:regex_grep",
+      "type": "Tool",
+      "label": "regex_grep",
+      "group": "code_search"
+    },
+    {
+      "id": "tool:rename_file",
+      "type": "Tool",
+      "label": "rename_file",
+      "group": "general"
+    },
+    {
+      "id": "tool:replace_file_content",
+      "type": "Tool",
+      "label": "replace_file_content",
+      "group": "filesystem"
+    },
+    {
+      "id": "tool:request_consensus",
+      "type": "Tool",
+      "label": "request_consensus",
+      "group": "swarm"
+    },
+    {
+      "id": "tool:rollback_to_checkpoint",
+      "type": "Tool",
+      "label": "rollback_to_checkpoint",
+      "group": "checkpoint"
+    },
+    {
+      "id": "tool:run_build_pipeline",
+      "type": "Tool",
+      "label": "run_build_pipeline",
+      "group": "verification"
+    },
+    {
+      "id": "tool:run_static_analysis",
+      "type": "Tool",
+      "label": "run_static_analysis",
+      "group": "verification"
+    },
+    {
+      "id": "tool:search_project_memory",
+      "type": "Tool",
+      "label": "search_project_memory",
+      "group": "memory"
+    },
+    {
+      "id": "tool:search_skills",
+      "type": "Tool",
+      "label": "search_skills",
+      "group": "skills"
+    },
+    {
+      "id": "tool:spawn_subagent",
+      "type": "Tool",
+      "label": "spawn_subagent",
+      "group": "swarm"
+    },
+    {
+      "id": "tool:spawn_subtasks",
+      "type": "Tool",
+      "label": "spawn_subtasks",
+      "group": "general"
+    },
+    {
+      "id": "tool:state_transition_logger",
+      "type": "Tool",
+      "label": "state_transition_logger",
+      "group": "general"
+    },
+    {
+      "id": "tool:static_code_check",
+      "type": "Tool",
+      "label": "static_code_check",
+      "group": "verification"
+    },
+    {
+      "id": "tool:terminal_execute",
+      "type": "Tool",
+      "label": "terminal_execute",
+      "group": "terminal"
+    },
+    {
+      "id": "tool:terminate_subagent",
+      "type": "Tool",
+      "label": "terminate_subagent",
+      "group": "swarm"
+    },
+    {
+      "id": "tool:update_edit_plan_step",
+      "type": "Tool",
+      "label": "update_edit_plan_step",
+      "group": "planning_and_contracts"
+    },
+    {
+      "id": "tool:update_scratchpad",
+      "type": "Tool",
+      "label": "update_scratchpad",
+      "group": "memory"
+    },
+    {
+      "id": "tool:verify_ground_truth",
+      "type": "Tool",
+      "label": "verify_ground_truth",
+      "group": "verification"
+    },
+    {
+      "id": "tool:write_file",
+      "type": "Tool",
+      "label": "write_file",
+      "group": "filesystem"
+    },
+    {
+      "id": "skill:api-and-interface-design",
+      "type": "Skill",
+      "label": "api-and-interface-design",
+      "category": "architecture"
+    },
+    {
+      "id": "skill:browser-testing-with-devtools",
+      "type": "Skill",
+      "label": "browser-testing-with-devtools",
+      "category": "general"
+    },
+    {
+      "id": "skill:ci-cd-and-automation",
+      "type": "Skill",
+      "label": "ci-cd-and-automation",
+      "category": "git"
+    },
+    {
+      "id": "skill:code-review-and-quality",
+      "type": "Skill",
+      "label": "code-review-and-quality",
+      "category": "code-review"
+    },
+    {
+      "id": "skill:code-simplification",
+      "type": "Skill",
+      "label": "code-simplification",
+      "category": "python"
+    },
+    {
+      "id": "skill:constraint-driven-development",
+      "type": "Skill",
+      "label": "constraint-driven-development",
+      "category": "security"
+    },
+    {
+      "id": "skill:context-engineering",
+      "type": "Skill",
+      "label": "context-engineering",
+      "category": "architecture"
+    },
+    {
+      "id": "skill:debugging-and-error-recovery",
+      "type": "Skill",
+      "label": "debugging-and-error-recovery",
+      "category": "python"
+    },
+    {
+      "id": "skill:deploy-to-vercel",
+      "type": "Skill",
+      "label": "deploy-to-vercel",
+      "category": "deployment"
+    },
+    {
+      "id": "skill:deprecation-and-migration",
+      "type": "Skill",
+      "label": "deprecation-and-migration",
+      "category": "database"
+    },
+    {
+      "id": "skill:documentation-and-adrs",
+      "type": "Skill",
+      "label": "documentation-and-adrs",
+      "category": "architecture"
+    },
+    {
+      "id": "skill:doubt-driven-development",
+      "type": "Skill",
+      "label": "doubt-driven-development",
+      "category": "code-review"
+    },
+    {
+      "id": "skill:frontend-ui-engineering",
+      "type": "Skill",
+      "label": "frontend-ui-engineering",
+      "category": "react"
+    },
+    {
+      "id": "skill:git-workflow-and-versioning",
+      "type": "Skill",
+      "label": "git-workflow-and-versioning",
+      "category": "git"
+    },
+    {
+      "id": "skill:idea-refine",
+      "type": "Skill",
+      "label": "idea-refine",
+      "category": "architecture"
+    },
+    {
+      "id": "skill:incremental-implementation",
+      "type": "Skill",
+      "label": "incremental-implementation",
+      "category": "architecture"
+    },
+    {
+      "id": "skill:interview-me",
+      "type": "Skill",
+      "label": "interview-me",
+      "category": "architecture"
+    },
+    {
+      "id": "skill:observability-and-instrumentation",
+      "type": "Skill",
+      "label": "observability-and-instrumentation",
+      "category": "deployment"
+    },
+    {
+      "id": "skill:performance-optimization",
+      "type": "Skill",
+      "label": "performance-optimization",
+      "category": "database"
+    },
+    {
+      "id": "skill:planning-and-task-breakdown",
+      "type": "Skill",
+      "label": "planning-and-task-breakdown",
+      "category": "architecture"
+    },
+    {
+      "id": "skill:security-and-hardening",
+      "type": "Skill",
+      "label": "security-and-hardening",
+      "category": "security"
+    },
+    {
+      "id": "skill:shipping-and-launch",
+      "type": "Skill",
+      "label": "shipping-and-launch",
+      "category": "git"
+    },
+    {
+      "id": "skill:source-driven-development",
+      "type": "Skill",
+      "label": "source-driven-development",
+      "category": "python"
+    },
+    {
+      "id": "skill:spec-driven-development",
+      "type": "Skill",
+      "label": "spec-driven-development",
+      "category": "architecture"
+    },
+    {
+      "id": "skill:test-driven-development",
+      "type": "Skill",
+      "label": "test-driven-development",
+      "category": "python"
+    },
+    {
+      "id": "skill:using-agent-skills",
+      "type": "Skill",
+      "label": "using-agent-skills",
+      "category": "architecture"
+    },
+    {
+      "id": "skill:vercel-cli-with-tokens",
+      "type": "Skill",
+      "label": "vercel-cli-with-tokens",
+      "category": "deployment"
+    },
+    {
+      "id": "skill:vercel-composition-patterns",
+      "type": "Skill",
+      "label": "vercel-composition-patterns",
+      "category": "react"
+    },
+    {
+      "id": "skill:vercel-optimize",
+      "type": "Skill",
+      "label": "vercel-optimize",
+      "category": "deployment"
+    },
+    {
+      "id": "skill:vercel-react-best-practices",
+      "type": "Skill",
+      "label": "vercel-react-best-practices",
+      "category": "react"
+    },
+    {
+      "id": "skill:vercel-react-native-skills",
+      "type": "Skill",
+      "label": "vercel-react-native-skills",
+      "category": "react"
+    },
+    {
+      "id": "skill:vercel-react-view-transitions",
+      "type": "Skill",
+      "label": "vercel-react-view-transitions",
+      "category": "react"
+    },
+    {
+      "id": "skill:web-design-guidelines",
+      "type": "Skill",
+      "label": "web-design-guidelines",
+      "category": "react"
+    },
+    {
+      "id": "skill:writing-guidelines",
+      "type": "Skill",
+      "label": "writing-guidelines",
+      "category": "code-review"
+    }
+  ],
+  "edges": [
+    {
+      "source": "runtime:AgentRegistry",
+      "target": "agent:PLANNER",
+      "relation": "registers"
+    },
+    {
+      "source": "agent:PLANNER",
+      "target": "runtime:UnifiedToolDispatcher",
+      "relation": "invokes_tools_via"
+    },
+    {
+      "source": "runtime:AgentRegistry",
+      "target": "agent:SPECIFICATION",
+      "relation": "registers"
+    },
+    {
+      "source": "agent:SPECIFICATION",
+      "target": "runtime:UnifiedToolDispatcher",
+      "relation": "invokes_tools_via"
+    },
+    {
+      "source": "runtime:AgentRegistry",
+      "target": "agent:ARCHITECTURE",
+      "relation": "registers"
+    },
+    {
+      "source": "agent:ARCHITECTURE",
+      "target": "runtime:UnifiedToolDispatcher",
+      "relation": "invokes_tools_via"
+    },
+    {
+      "source": "runtime:AgentRegistry",
+      "target": "agent:CODER",
+      "relation": "registers"
+    },
+    {
+      "source": "agent:CODER",
+      "target": "runtime:UnifiedToolDispatcher",
+      "relation": "invokes_tools_via"
+    },
+    {
+      "source": "runtime:AgentRegistry",
+      "target": "agent:TESTER",
+      "relation": "registers"
+    },
+    {
+      "source": "agent:TESTER",
+      "target": "runtime:UnifiedToolDispatcher",
+      "relation": "invokes_tools_via"
+    },
+    {
+      "source": "runtime:AgentRegistry",
+      "target": "agent:REVIEWER",
+      "relation": "registers"
+    },
+    {
+      "source": "agent:REVIEWER",
+      "target": "runtime:UnifiedToolDispatcher",
+      "relation": "invokes_tools_via"
+    },
+    {
+      "source": "runtime:AgentRegistry",
+      "target": "agent:database-architect",
+      "relation": "registers"
+    },
+    {
+      "source": "agent:database-architect",
+      "target": "skill:deprecation-and-migration",
+      "relation": "uses_skill"
+    },
+    {
+      "source": "agent:database-architect",
+      "target": "skill:codebase-design",
+      "relation": "uses_skill"
+    },
+    {
+      "source": "runtime:AgentRegistry",
+      "target": "agent:python-debugger",
+      "relation": "registers"
+    },
+    {
+      "source": "agent:python-debugger",
+      "target": "skill:debugging-and-error-recovery",
+      "relation": "uses_skill"
+    },
+    {
+      "source": "agent:python-debugger",
+      "target": "skill:diagnosing-bugs",
+      "relation": "uses_skill"
+    },
+    {
+      "source": "agent:python-debugger",
+      "target": "skill:test-driven-development",
+      "relation": "uses_skill"
+    },
+    {
+      "source": "runtime:AgentRegistry",
+      "target": "agent:react-specialist",
+      "relation": "registers"
+    },
+    {
+      "source": "agent:react-specialist",
+      "target": "skill:frontend-ui-engineering",
+      "relation": "uses_skill"
+    },
+    {
+      "source": "agent:react-specialist",
+      "target": "skill:vercel-react-best-practices",
+      "relation": "uses_skill"
+    },
+    {
+      "source": "agent:react-specialist",
+      "target": "skill:web-design-guidelines",
+      "relation": "uses_skill"
+    },
+    {
+      "source": "runtime:AgentRegistry",
+      "target": "agent:security-auditor",
+      "relation": "registers"
+    },
+    {
+      "source": "agent:security-auditor",
+      "target": "skill:security-and-hardening",
+      "relation": "uses_skill"
+    },
+    {
+      "source": "agent:security-auditor",
+      "target": "skill:doubt-driven-development",
+      "relation": "uses_skill"
+    },
+    {
+      "source": "runtime:MCPManager",
+      "target": "mcp_server:mcp-server-filesystem",
+      "relation": "manages"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "mcp_server:mcp-server-filesystem",
+      "relation": "routes_to"
+    },
+    {
+      "source": "mcp_server:mcp-server-filesystem",
+      "target": "tool:read_file",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-filesystem",
+      "target": "tool:write_file",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-filesystem",
+      "target": "tool:list_directory",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-filesystem",
+      "target": "tool:delete_file",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-filesystem",
+      "target": "tool:get_file_info",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-filesystem",
+      "target": "tool:replace_file_content",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-filesystem",
+      "target": "tool:insert_lines",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-filesystem",
+      "target": "tool:delete_lines",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-filesystem",
+      "target": "tool:apply_diff_blocks",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-filesystem",
+      "target": "tool:get_workspace_changes",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-filesystem",
+      "target": "tool:rollback_to_checkpoint",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-filesystem",
+      "target": "tool:rename_file",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-filesystem",
+      "target": "tool:move_file",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-filesystem",
+      "target": "tool:apply_patch",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "runtime:MCPManager",
+      "target": "mcp_server:mcp-server-git",
+      "relation": "manages"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "mcp_server:mcp-server-git",
+      "relation": "routes_to"
+    },
+    {
+      "source": "mcp_server:mcp-server-git",
+      "target": "tool:git_status",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-git",
+      "target": "tool:git_diff",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-git",
+      "target": "tool:git_log",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-git",
+      "target": "tool:git_show",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-git",
+      "target": "tool:git_blame",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-git",
+      "target": "tool:git_branch",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-git",
+      "target": "tool:git_checkout",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-git",
+      "target": "tool:git_commit",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-git",
+      "target": "tool:git_restore",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-git",
+      "target": "tool:git_patch",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-git",
+      "target": "tool:git_init",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "runtime:MCPManager",
+      "target": "mcp_server:mcp-server-terminal",
+      "relation": "manages"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "mcp_server:mcp-server-terminal",
+      "relation": "routes_to"
+    },
+    {
+      "source": "mcp_server:mcp-server-terminal",
+      "target": "tool:terminal_execute",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-terminal",
+      "target": "tool:run_tests",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-terminal",
+      "target": "tool:check_environment",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "runtime:MCPManager",
+      "target": "mcp_server:mcp-server-memory",
+      "relation": "manages"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "mcp_server:mcp-server-memory",
+      "relation": "routes_to"
+    },
+    {
+      "source": "mcp_server:mcp-server-memory",
+      "target": "tool:store_memory",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-memory",
+      "target": "tool:search_memory",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-memory",
+      "target": "tool:index_codebase",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-memory",
+      "target": "tool:query_symbols",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-memory",
+      "target": "tool:find_references",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-memory",
+      "target": "tool:get_dependencies",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "mcp_server:mcp-server-memory",
+      "target": "tool:get_codebase_map",
+      "relation": "provides_mcp_tool"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:apply_diff_blocks",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:apply_diff_blocks",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:apply_patch",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:apply_patch",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:ast_syntax_check",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:complete_task",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:delegate_subtask",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:delete_file",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:delete_file",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:delete_lines",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:delete_lines",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:detect_project_environment",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:detect_project_environment",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:discover_swarm_agents",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:execute_skill_script",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:find_references",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:find_references",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:find_symbol",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:find_symbol",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:generate_edit_plan",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:get_architecture_slice",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:get_architecture_slice",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:get_codebase_map",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:get_codebase_map",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:get_dependencies",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:get_dependencies",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:get_edit_plan",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:get_symbol_neighbors",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:get_symbol_neighbors",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:get_task_artifact",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:get_workspace_changes",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:get_workspace_changes",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:git_blame",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:git_blame",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:git_branch",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:git_branch",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:git_checkout",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:git_checkout",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:git_commit",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:git_commit",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:git_diff",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:git_diff",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:git_init",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:git_init",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:git_log",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:git_log",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:git_patch",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:git_patch",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:git_restore",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:git_restore",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:git_show",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:git_show",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:git_status",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:git_status",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:handoff_to_agent",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:insert_lines",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:insert_lines",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:inspect_existing_tests",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:inspect_existing_tests",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:install_skill",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:install_skill",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:list_directory",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:list_directory",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:load_skill",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:load_skill",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:move_file",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:move_file",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:post_to_blackboard",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:query_architecture",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:query_codebase_graph",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:query_codebase_graph",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:query_specification",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:read_file",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:read_file",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:read_from_blackboard",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:read_skill_reference",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:read_skill_reference",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:record_project_memory",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:record_project_memory",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:regex_grep",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:regex_grep",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:rename_file",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:rename_file",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:replace_file_content",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:replace_file_content",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:request_consensus",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:rollback_to_checkpoint",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:run_build_pipeline",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:run_build_pipeline",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:run_static_analysis",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:run_static_analysis",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:search_project_memory",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:search_project_memory",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:search_skills",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:search_skills",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:spawn_subagent",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:spawn_subtasks",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:spawn_subtasks",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:state_transition_logger",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:static_code_check",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:terminal_execute",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:terminate_subagent",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:update_edit_plan_step",
+      "relation": "dispatches"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:update_scratchpad",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:update_scratchpad",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:verify_ground_truth",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:verify_ground_truth",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "tool:write_file",
+      "relation": "dispatches"
+    },
+    {
+      "source": "tool:write_file",
+      "target": "runtime:WorkspaceManager",
+      "relation": "accesses_workspace"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:api-and-interface-design",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:api-and-interface-design",
+      "target": "tool:find_symbol",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:api-and-interface-design",
+      "target": "tool:get_dependencies",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:api-and-interface-design",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:api-and-interface-design",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:api-and-interface-design",
+      "target": "tool:write_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:browser-testing-with-devtools",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:browser-testing-with-devtools",
+      "target": "tool:browser.console",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:browser-testing-with-devtools",
+      "target": "tool:browser.inspect",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:browser-testing-with-devtools",
+      "target": "tool:browser.network",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:browser-testing-with-devtools",
+      "target": "tool:browser.snapshot",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:browser-testing-with-devtools",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:browser-testing-with-devtools",
+      "target": "tool:terminal_execute",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:ci-cd-and-automation",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:ci-cd-and-automation",
+      "target": "tool:git_commit",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:ci-cd-and-automation",
+      "target": "tool:git_status",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:ci-cd-and-automation",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:ci-cd-and-automation",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:ci-cd-and-automation",
+      "target": "tool:terminal_execute",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:ci-cd-and-automation",
+      "target": "tool:write_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:code-review-and-quality",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:code-review-and-quality",
+      "target": "tool:find_references",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:code-review-and-quality",
+      "target": "tool:find_symbol",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:code-review-and-quality",
+      "target": "tool:git_diff",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:code-review-and-quality",
+      "target": "tool:list_directory",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:code-review-and-quality",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:code-review-and-quality",
+      "target": "tool:regex_grep",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:code-review-and-quality",
+      "target": "tool:run_static_analysis",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:code-review-and-quality",
+      "target": "tool:static_code_check",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:code-simplification",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:code-simplification",
+      "target": "tool:ast_syntax_check",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:code-simplification",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:code-simplification",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:code-simplification",
+      "target": "tool:static_code_check",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:code-simplification",
+      "target": "tool:terminal_execute",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:constraint-driven-development",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:constraint-driven-development",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:constraint-driven-development",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:constraint-driven-development",
+      "target": "tool:terminal_execute",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:constraint-driven-development",
+      "target": "tool:verify_ground_truth",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:constraint-driven-development",
+      "target": "tool:write_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:context-engineering",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:context-engineering",
+      "target": "tool:get_codebase_map",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:context-engineering",
+      "target": "tool:list_directory",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:context-engineering",
+      "target": "tool:load_skill",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:context-engineering",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:context-engineering",
+      "target": "tool:search_skills",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:debugging-and-error-recovery",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:debugging-and-error-recovery",
+      "target": "tool:ast_syntax_check",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:debugging-and-error-recovery",
+      "target": "tool:find_references",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:debugging-and-error-recovery",
+      "target": "tool:find_symbol",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:debugging-and-error-recovery",
+      "target": "tool:get_workspace_changes",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:debugging-and-error-recovery",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:debugging-and-error-recovery",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:debugging-and-error-recovery",
+      "target": "tool:terminal_execute",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:deploy-to-vercel",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:deploy-to-vercel",
+      "target": "tool:list_directory",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:deploy-to-vercel",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:deploy-to-vercel",
+      "target": "tool:terminal_execute",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:deploy-to-vercel",
+      "target": "tool:vercel.cli",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:deprecation-and-migration",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:deprecation-and-migration",
+      "target": "tool:find_references",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:deprecation-and-migration",
+      "target": "tool:find_symbol",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:deprecation-and-migration",
+      "target": "tool:get_dependencies",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:deprecation-and-migration",
+      "target": "tool:get_impact_radius",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:deprecation-and-migration",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:deprecation-and-migration",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:documentation-and-adrs",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:documentation-and-adrs",
+      "target": "tool:get_codebase_map",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:documentation-and-adrs",
+      "target": "tool:list_directory",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:documentation-and-adrs",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:documentation-and-adrs",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:documentation-and-adrs",
+      "target": "tool:write_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:doubt-driven-development",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:doubt-driven-development",
+      "target": "tool:find_references",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:doubt-driven-development",
+      "target": "tool:find_symbol",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:doubt-driven-development",
+      "target": "tool:git_diff",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:doubt-driven-development",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:doubt-driven-development",
+      "target": "tool:regex_grep",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:doubt-driven-development",
+      "target": "tool:verify_ground_truth",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:frontend-ui-engineering",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:frontend-ui-engineering",
+      "target": "tool:delete_lines",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:frontend-ui-engineering",
+      "target": "tool:insert_lines",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:frontend-ui-engineering",
+      "target": "tool:list_directory",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:frontend-ui-engineering",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:frontend-ui-engineering",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:frontend-ui-engineering",
+      "target": "tool:terminal_execute",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:frontend-ui-engineering",
+      "target": "tool:write_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:git-workflow-and-versioning",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:git-workflow-and-versioning",
+      "target": "tool:git_blame",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:git-workflow-and-versioning",
+      "target": "tool:git_branch",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:git-workflow-and-versioning",
+      "target": "tool:git_checkout",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:git-workflow-and-versioning",
+      "target": "tool:git_commit",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:git-workflow-and-versioning",
+      "target": "tool:git_diff",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:git-workflow-and-versioning",
+      "target": "tool:git_log",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:git-workflow-and-versioning",
+      "target": "tool:git_patch",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:git-workflow-and-versioning",
+      "target": "tool:git_restore",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:git-workflow-and-versioning",
+      "target": "tool:git_show",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:git-workflow-and-versioning",
+      "target": "tool:git_status",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:idea-refine",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:idea-refine",
+      "target": "tool:execute_skill_script",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:idea-refine",
+      "target": "tool:list_directory",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:idea-refine",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:idea-refine",
+      "target": "tool:write_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:incremental-implementation",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:incremental-implementation",
+      "target": "tool:ast_syntax_check",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:incremental-implementation",
+      "target": "tool:complete_task",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:incremental-implementation",
+      "target": "tool:generate_edit_plan",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:incremental-implementation",
+      "target": "tool:get_edit_plan",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:incremental-implementation",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:incremental-implementation",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:incremental-implementation",
+      "target": "tool:terminal_execute",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:incremental-implementation",
+      "target": "tool:update_edit_plan_step",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:interview-me",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:interview-me",
+      "target": "tool:list_directory",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:interview-me",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:observability-and-instrumentation",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:observability-and-instrumentation",
+      "target": "tool:find_symbol",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:observability-and-instrumentation",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:observability-and-instrumentation",
+      "target": "tool:regex_grep",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:observability-and-instrumentation",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:observability-and-instrumentation",
+      "target": "tool:terminal_execute",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:performance-optimization",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:performance-optimization",
+      "target": "tool:find_symbol",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:performance-optimization",
+      "target": "tool:get_call_graph",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:performance-optimization",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:performance-optimization",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:performance-optimization",
+      "target": "tool:run_build_pipeline",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:performance-optimization",
+      "target": "tool:terminal_execute",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:planning-and-task-breakdown",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:planning-and-task-breakdown",
+      "target": "tool:complete_task",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:planning-and-task-breakdown",
+      "target": "tool:get_architecture_summary",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:planning-and-task-breakdown",
+      "target": "tool:get_codebase_map",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:planning-and-task-breakdown",
+      "target": "tool:list_directory",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:planning-and-task-breakdown",
+      "target": "tool:query_codebase_graph",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:planning-and-task-breakdown",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:security-and-hardening",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:security-and-hardening",
+      "target": "tool:find_symbol",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:security-and-hardening",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:security-and-hardening",
+      "target": "tool:regex_grep",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:security-and-hardening",
+      "target": "tool:run_static_analysis",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:security-and-hardening",
+      "target": "tool:static_code_check",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:security-and-hardening",
+      "target": "tool:verify_ground_truth",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:shipping-and-launch",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:shipping-and-launch",
+      "target": "tool:git_diff",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:shipping-and-launch",
+      "target": "tool:git_status",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:shipping-and-launch",
+      "target": "tool:run_build_pipeline",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:shipping-and-launch",
+      "target": "tool:terminal_execute",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:shipping-and-launch",
+      "target": "tool:verify_ground_truth",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:source-driven-development",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:source-driven-development",
+      "target": "tool:find_symbol",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:source-driven-development",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:source-driven-development",
+      "target": "tool:regex_grep",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:source-driven-development",
+      "target": "tool:terminal_execute",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:spec-driven-development",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:spec-driven-development",
+      "target": "tool:list_directory",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:spec-driven-development",
+      "target": "tool:query_specification",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:spec-driven-development",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:spec-driven-development",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:spec-driven-development",
+      "target": "tool:write_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:test-driven-development",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:test-driven-development",
+      "target": "tool:ast_syntax_check",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:test-driven-development",
+      "target": "tool:inspect_existing_tests",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:test-driven-development",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:test-driven-development",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:test-driven-development",
+      "target": "tool:terminal_execute",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:test-driven-development",
+      "target": "tool:write_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:using-agent-skills",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:using-agent-skills",
+      "target": "tool:execute_skill_script",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:using-agent-skills",
+      "target": "tool:load_skill",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:using-agent-skills",
+      "target": "tool:read_skill_reference",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:using-agent-skills",
+      "target": "tool:search_skills",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:vercel-cli-with-tokens",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:vercel-cli-with-tokens",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:vercel-cli-with-tokens",
+      "target": "tool:terminal_execute",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:vercel-cli-with-tokens",
+      "target": "tool:vercel.cli",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:vercel-composition-patterns",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:vercel-composition-patterns",
+      "target": "tool:ast_syntax_check",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:vercel-composition-patterns",
+      "target": "tool:find_symbol",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:vercel-composition-patterns",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:vercel-composition-patterns",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:vercel-optimize",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:vercel-optimize",
+      "target": "tool:execute_skill_script",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:vercel-optimize",
+      "target": "tool:list_directory",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:vercel-optimize",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:vercel-optimize",
+      "target": "tool:terminal_execute",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:vercel-react-best-practices",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:vercel-react-best-practices",
+      "target": "tool:ast_syntax_check",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:vercel-react-best-practices",
+      "target": "tool:find_symbol",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:vercel-react-best-practices",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:vercel-react-best-practices",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:vercel-react-native-skills",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:vercel-react-native-skills",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:vercel-react-native-skills",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:vercel-react-native-skills",
+      "target": "tool:terminal_execute",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:vercel-react-view-transitions",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:vercel-react-view-transitions",
+      "target": "tool:ast_syntax_check",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:vercel-react-view-transitions",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:vercel-react-view-transitions",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:web-design-guidelines",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:web-design-guidelines",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:web-design-guidelines",
+      "target": "tool:regex_grep",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:web-design-guidelines",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:SkillRegistry",
+      "target": "skill:writing-guidelines",
+      "relation": "indexes"
+    },
+    {
+      "source": "skill:writing-guidelines",
+      "target": "tool:list_directory",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:writing-guidelines",
+      "target": "tool:read_file",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "skill:writing-guidelines",
+      "target": "tool:replace_file_content",
+      "relation": "requires_tool"
+    },
+    {
+      "source": "runtime:LangGraph",
+      "target": "runtime:AgentRegistry",
+      "relation": "selects_agents"
+    },
+    {
+      "source": "runtime:LangGraph",
+      "target": "runtime:SkillRegistry",
+      "relation": "injects_jit_skills"
+    },
+    {
+      "source": "runtime:LangGraph",
+      "target": "runtime:WorkspaceManager",
+      "relation": "sandboxes_execution"
+    },
+    {
+      "source": "runtime:LangGraph",
+      "target": "runtime:LiteLLMGateway",
+      "relation": "routes_llm_inference"
+    },
+    {
+      "source": "runtime:UnifiedToolDispatcher",
+      "target": "runtime:MCPManager",
+      "relation": "orchestrates"
+    }
+  ]
+}

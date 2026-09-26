@@ -1,0 +1,79 @@
+[
+  {
+    "tool_name": "browser.console",
+    "requested_by_skills": [
+      "browser-testing-with-devtools"
+    ],
+    "category": "browser_automation",
+    "recommended_source": "Chrome DevTools MCP or @modelcontextprotocol/server-puppeteer",
+    "library_type": "MCP Server",
+    "contract_rule_citation": "Rules 3, 4, 5: Never create custom wrappers around functionality already provided by mature libraries; prefer importing existing libraries over reinventing.",
+    "recommended_action": "Connect existing MCP Server in mcp_servers.json. Do NOT write custom Playwright/Selenium wrapper."
+  },
+  {
+    "tool_name": "browser.inspect",
+    "requested_by_skills": [
+      "browser-testing-with-devtools"
+    ],
+    "category": "browser_automation",
+    "recommended_source": "Chrome DevTools MCP or @modelcontextprotocol/server-puppeteer",
+    "library_type": "MCP Server",
+    "contract_rule_citation": "Rules 3, 4, 5: Never create custom wrappers around functionality already provided by mature libraries; prefer importing existing libraries over reinventing.",
+    "recommended_action": "Connect existing MCP Server in mcp_servers.json. Do NOT write custom Playwright/Selenium wrapper."
+  },
+  {
+    "tool_name": "browser.network",
+    "requested_by_skills": [
+      "browser-testing-with-devtools"
+    ],
+    "category": "browser_automation",
+    "recommended_source": "Chrome DevTools MCP or @modelcontextprotocol/server-puppeteer",
+    "library_type": "MCP Server",
+    "contract_rule_citation": "Rules 3, 4, 5: Never create custom wrappers around functionality already provided by mature libraries; prefer importing existing libraries over reinventing.",
+    "recommended_action": "Connect existing MCP Server in mcp_servers.json. Do NOT write custom Playwright/Selenium wrapper."
+  },
+  {
+    "tool_name": "browser.snapshot",
+    "requested_by_skills": [
+      "browser-testing-with-devtools"
+    ],
+    "category": "browser_automation",
+    "recommended_source": "Chrome DevTools MCP or @modelcontextprotocol/server-puppeteer",
+    "library_type": "MCP Server",
+    "contract_rule_citation": "Rules 3, 4, 5: Never create custom wrappers around functionality already provided by mature libraries; prefer importing existing libraries over reinventing.",
+    "recommended_action": "Connect existing MCP Server in mcp_servers.json. Do NOT write custom Playwright/Selenium wrapper."
+  },
+  {
+    "tool_name": "get_impact_radius",
+    "requested_by_skills": [
+      "deprecation-and-migration"
+    ],
+    "category": "general",
+    "recommended_source": "LangChain Community Tools / Python stdlib",
+    "library_type": "Mature Library",
+    "contract_rule_citation": "Rules 3, 4, 5: Never create custom wrappers around functionality already provided by mature libraries; prefer importing existing libraries over reinventing.",
+    "recommended_action": "Import from langchain_community.tools. Do not recreate."
+  },
+  {
+    "tool_name": "get_call_graph",
+    "requested_by_skills": [
+      "performance-optimization"
+    ],
+    "category": "general",
+    "recommended_source": "LangChain Community Tools / Python stdlib",
+    "library_type": "Mature Library",
+    "contract_rule_citation": "Rules 3, 4, 5: Never create custom wrappers around functionality already provided by mature libraries; prefer importing existing libraries over reinventing.",
+    "recommended_action": "Import from langchain_community.tools. Do not recreate."
+  },
+  {
+    "tool_name": "get_architecture_summary",
+    "requested_by_skills": [
+      "planning-and-task-breakdown"
+    ],
+    "category": "general",
+    "recommended_source": "LangChain Community Tools / Python stdlib",
+    "library_type": "Mature Library",
+    "contract_rule_citation": "Rules 3, 4, 5: Never create custom wrappers around functionality already provided by mature libraries; prefer importing existing libraries over reinventing.",
+    "recommended_action": "Import from langchain_community.tools. Do not recreate."
+  }
+]
