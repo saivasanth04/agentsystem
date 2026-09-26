@@ -7,6 +7,7 @@ from .evidence_stopping import EvidenceType, EvidenceRecord, EvidenceLedger
 from .diagnostics import FailureDiagnostician, DiagnosticReport
 from .task_graph import TaskDAG, ExecutableTask, TaskState, TaskPermissions, RetryPolicy, ArtifactRecord, generate_task_id, spawn_child_subtasks
 from .verification import TaskVerificationGate, VerificationResult
+VerificationGate = TaskVerificationGate
 from .dag_scheduler import ConcurrentDAGScheduler
 from .analysis import ParallelDomainAnalyzer, DomainAnalysisMatrix
 from .messaging import MessageBus, MessageType, StructuredMessage
@@ -84,8 +85,30 @@ from .repo_bootstrap import (
     detect_test_runner,
     RepositoryBootstrapper,
 )
+from runtime.tool_policy import ToolPolicy, DEFAULT_TOOL_ALIASES, CAPABILITY_TO_TOOLS
+from runtime.capability_router import CapabilityRouter, BrowserMCPAdapter
+from runtime.permission_engine import PermissionEngine, PermissionEvaluationResult
+from runtime.observation_engine import Observation, ObservationEngine
+from runtime.execution_state import ExecutionState, LoopStatus
+from runtime.event_stream import EventStream, LoopEvent, LoopEventType
+from runtime.agent_loop import AgentExecutionLoop
 
 __all__ = [
+    "ToolPolicy",
+    "DEFAULT_TOOL_ALIASES",
+    "CAPABILITY_TO_TOOLS",
+    "CapabilityRouter",
+    "BrowserMCPAdapter",
+    "PermissionEngine",
+    "PermissionEvaluationResult",
+    "Observation",
+    "ObservationEngine",
+    "ExecutionState",
+    "LoopStatus",
+    "EventStream",
+    "LoopEvent",
+    "LoopEventType",
+    "AgentExecutionLoop",
     "ReActAgentLoop",
     "ReActStep",
     "ReActTrajectory",
@@ -103,7 +126,11 @@ __all__ = [
     "generate_task_id",
     "spawn_child_subtasks",
     "TaskVerificationGate",
+    "VerificationGate",
     "VerificationResult",
+    "ProductionIDE",
+    "IDEVerificationPipeline",
+    "IDERepairPipeline",
     "ConcurrentDAGScheduler",
     "ParallelDomainAnalyzer",
     "DomainAnalysisMatrix",
@@ -167,4 +194,8 @@ __all__ = [
 ]
 
 
-
+def __getattr__(name: str):
+    if name in ("ProductionIDE", "IDEVerificationPipeline", "IDERepairPipeline"):
+        import ide
+        return getattr(ide, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
