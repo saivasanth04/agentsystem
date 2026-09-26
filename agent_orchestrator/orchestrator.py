@@ -18,7 +18,6 @@ from .state import OrchestratorState, ReviewVerdict, TaskStatus, AgentMessage, R
 from .tools.workspace import WorkspaceManager
 from .tools.builtin_tools import BuiltinToolRegistry
 from .tools.mcp_client import MCPClientAdapter
-from .tools.unified_dispatcher import UnifiedToolDispatcher
 from .mcp.manager import MCPManager
 from .registry.skill_registry import SkillRegistry
 from .registry.agent_registry import AgentRegistry, AgentDefinition, AgentManifest

@@ -153,39 +153,3 @@ class ExecutionState:
             "completed_at": self.completed_at,
             "observations": [o.to_dict() for o in self.observations],
         }
-
-    def __getitem__(self, item: str) -> Any:
-        mapping = {
-            "status": self.status,
-            "result": self.final_response,
-            "output": self.final_response,
-            "turns": self.iteration,
-            "iteration": self.iteration,
-            "execution_frame": self.metadata.get("execution_frame"),
-            "task_objective": self.task_objective,
-            "observations": self.observations,
-            "tool_calls": self.tool_calls,
-            "reasoning_history": self.reasoning_history,
-        }
-        if item in mapping:
-            return mapping[item]
-        if hasattr(self, item):
-            return getattr(self, item)
-        if item in self.metadata:
-            return self.metadata[item]
-        raise KeyError(item)
-
-    def get(self, item: str, default: Any = None) -> Any:
-        try:
-            return self[item]
-        except (KeyError, AttributeError):
-            return default
-
-    def __contains__(self, item: str) -> bool:
-        keys = (
-            "status", "result", "output", "turns", "iteration",
-            "execution_frame", "task_objective", "observations",
-            "tool_calls", "reasoning_history",
-        )
-        return item in keys or hasattr(self, item) or item in self.metadata
-

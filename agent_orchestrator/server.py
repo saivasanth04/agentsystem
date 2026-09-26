@@ -498,52 +498,86 @@ async def get_dashboard_stats():
 async def dry_run_task(req: DryRunRequest):
     """Decomposes a user prompt into a preview TaskDAG without executing code."""
     try:
+        # Dynamically derive TaskDAG from RepositoryBrain and SkillResolver (Fix 13)
+        ws_dir = Path(req.workspace_path).resolve() if req.workspace_path else Path.cwd()
+        from repository.repository_brain import RepositoryBrain
+        from skills.runtime_policy import SkillResolver
+        from runtime.capability_router import CapabilityRouter
+
+        db_path = ws_dir / ".orchestrator" / "repository_brain.db"
+        brain = RepositoryBrain(db_path=db_path, workspace_root=ws_dir)
+        resolver = SkillResolver()
+        resolved_skills = resolver.resolve(req.user_request)
+        skill_names = [s.skill_name for s in resolved_skills] if resolved_skills else []
+
+        router = CapabilityRouter(skill_registry=None)
+        caps = router.route_task(req.user_request, active_skills=skill_names)
+        tool_policy = router.get_tool_policy_for_task(req.user_request, active_skills=skill_names)
+        allowed_tools = tool_policy.allowed_tools if tool_policy else ["read_file", "write_file", "terminal_execute"]
+
+        # Discover matching symbols and files in RepositoryBrain
+        tokens = [w.strip() for w in re.split(r"[\s,.:;()]+", req.user_request) if len(w.strip()) > 2]
+        matched_symbols = []
+        matched_files = set()
+        for tok in tokens[:8]:
+            try:
+                syms = brain.search_symbols(tok)
+                for s in syms:
+                    matched_symbols.append(s)
+                    if s.file_path:
+                        matched_files.add(s.file_path)
+            except Exception:
+                pass
+
+        files_label = ", ".join(list(matched_files)[:2]) if matched_files else "codebase modules"
+        symbols_label = ", ".join(s.name for s in matched_symbols[:3]) if matched_symbols else req.user_request[:40]
+
         subtasks = [
             {
                 "id": "T-01",
-                "objective": "Specify requirements and schema contracts",
-                "description": "Specify requirements and schema contracts",
+                "objective": f"Specify architecture contracts and interface boundaries for {files_label}",
+                "description": f"Analyze requirements, dependencies, and type contracts for {files_label}",
                 "assigned_agent": "SpecifierAgent",
-                "capabilities": ["SPEC_ANALYSIS", "CONTRACT_DEFINITION"],
-                "tools": ["read_file", "write_file"],
+                "capabilities": [c for c in caps if "read" in c or "analysis" in c or "spec" in c] or ["SPEC_ANALYSIS", "CONTRACT_DEFINITION"],
+                "tools": [t for t in allowed_tools if "read" in t or "find" in t or "grep" in t] or ["read_file", "list_directory"],
                 "dependencies": [],
-                "acceptance_tests": ["Contract schema validated"],
+                "acceptance_tests": [f"Contract schema for {f} validated" for f in list(matched_files)[:2]] or ["Contract schema validated"],
                 "status": "READY",
             },
-                {
-                    "id": "T-02",
-                    "objective": f"Implement core logic for: {req.user_request[:50]}",
-                    "description": f"Implement core logic for: {req.user_request[:50]}",
-                    "assigned_agent": "CoderAgent",
-                    "capabilities": ["CODE_GENERATION", "REFACTOR"],
-                    "tools": ["read_file", "apply_patch", "edit_file"],
-                    "dependencies": ["T-01"],
-                    "acceptance_tests": ["Unit tests passing", "No regression"],
-                    "status": "PENDING",
-                },
-                {
-                    "id": "T-03",
-                    "objective": "Execute test suite and static analysis",
-                    "description": "Execute test suite and static analysis",
-                    "assigned_agent": "TesterAgent",
-                    "capabilities": ["TEST_EXECUTION", "COVERAGE_ANALYSIS"],
-                    "tools": ["run_tests", "read_file"],
-                    "dependencies": ["T-02"],
-                    "acceptance_tests": ["All pytest assertions pass", ">80% coverage"],
-                    "status": "PENDING",
-                },
-                {
-                    "id": "T-04",
-                    "objective": "Perform 5-Gate ground truth review",
-                    "description": "Perform 5-Gate ground truth review",
-                    "assigned_agent": "ReviewerAgent",
-                    "capabilities": ["QUALITY_GATE", "ADVERSARIAL_REVIEW"],
-                    "tools": ["read_file", "verify_ground_truth"],
-                    "dependencies": ["T-03"],
-                    "acceptance_tests": ["Ground truth score >= 80", "PASS verdict"],
-                    "status": "PENDING",
-                },
-            ]
+            {
+                "id": "T-02",
+                "objective": f"Implement changes for {symbols_label}",
+                "description": f"Implement mutations and domain logic for {symbols_label} in {files_label}",
+                "assigned_agent": "CoderAgent",
+                "capabilities": [c for c in caps if "write" in c or "edit" in c or "code" in c] or ["CODE_GENERATION", "REFACTOR"],
+                "tools": [t for t in allowed_tools if "write" in t or "edit" in t or "patch" in t or "read" in t] or ["read_file", "write_file", "replace_file_content"],
+                "dependencies": ["T-01"],
+                "acceptance_tests": [f"Unit test assertions for {s.name} passing" for s in matched_symbols[:2]] or ["Unit tests passing", "No regressions"],
+                "status": "PENDING",
+            },
+            {
+                "id": "T-03",
+                "objective": f"Execute framework-aware verification suite for {files_label}",
+                "description": "Run test suites, type checking, and linting on modified components",
+                "assigned_agent": "TesterAgent",
+                "capabilities": [c for c in caps if "test" in c or "verify" in c] or ["TEST_EXECUTION", "COVERAGE_ANALYSIS"],
+                "tools": [t for t in allowed_tools if "test" in t or "run" in t or "terminal" in t] or ["terminal_execute", "read_file"],
+                "dependencies": ["T-02"],
+                "acceptance_tests": ["Test assertions pass", "Clean static analysis"],
+                "status": "PENDING",
+            },
+            {
+                "id": "T-04",
+                "objective": f"Conduct 5-Gate ground truth adversarial review against skills {skill_names[:3]}",
+                "description": f"Perform comprehensive quality review evaluating security, correctness, and skills {skill_names[:3]}",
+                "assigned_agent": "ReviewerAgent",
+                "capabilities": ["QUALITY_GATE", "ADVERSARIAL_REVIEW"],
+                "tools": ["read_file", "verify_ground_truth"],
+                "dependencies": ["T-03"],
+                "acceptance_tests": ["Ground truth score >= 80", "PASS verdict"],
+                "status": "PENDING",
+            },
+        ]
 
         # Format as DAGSnapshot
         nodes = []

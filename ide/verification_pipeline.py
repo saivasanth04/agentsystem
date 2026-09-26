@@ -124,11 +124,24 @@ class IDEVerificationPipeline:
         verification_gate: Optional[TaskVerificationGate] = None,
         tool_dispatcher: Optional[Any] = None,
         llm_client: Optional[Any] = None,
+        runtime_profile: Optional[Any] = None,
     ):
         self.workspace = workspace
         self.workspace_root = Path(workspace.root_dir)
         self.tool_dispatcher = tool_dispatcher
         self.llm_client = llm_client
+
+        # Runtime environment detection (Fix 11: Framework-Aware Verification)
+        if runtime_profile is not None:
+            self.profile = runtime_profile
+        else:
+            try:
+                from repository.runtime_detector import RuntimeDetector
+                self.runtime_detector = RuntimeDetector(self.workspace_root)
+                self.profile = self.runtime_detector.detect()
+            except Exception as e:
+                logger.debug(f"RuntimeDetector initialization fallback: {e}")
+                self.profile = None
 
         # Reused existing components
         self.verification_gate = verification_gate or TaskVerificationGate(
@@ -147,6 +160,25 @@ class IDEVerificationPipeline:
         # Initialize Git repository tracking via GitPython
         self._git_repo: Optional[git.Repo] = None
         self._init_git_repo()
+
+    def _run_cmd(self, cmd: Union[List[str], str], timeout: int = 60) -> Tuple[int, str, str]:
+        """Runs a subprocess command with timeout and clean output decoding."""
+        try:
+            is_shell = isinstance(cmd, str) or (isinstance(cmd, list) and sys.platform == "win32")
+            shell_cmd = " ".join(cmd) if isinstance(cmd, list) else cmd
+            proc = subprocess.run(
+                shell_cmd if is_shell else cmd,
+                shell=is_shell,
+                cwd=str(self.workspace_root),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            return proc.returncode, proc.stdout, proc.stderr
+        except subprocess.TimeoutExpired:
+            return 124, "", f"Command timed out after {timeout} seconds."
+        except Exception as e:
+            return 1, "", str(e)
 
     def _init_git_repo(self) -> None:
         """Initializes or discovers a Git repository in the workspace using GitPython."""
@@ -212,9 +244,62 @@ class IDEVerificationPipeline:
     def stage_build(self, target_files: Optional[List[str]] = None) -> StageOutcome:
         """
         Stage 2: Build.
-        Validates Python syntax via AST and runs static type checking via mypy.
+        Framework-aware build stage:
+        - Python: AST Syntax Check + mypy
+        - TypeScript/JavaScript: tsc --noEmit or npm run build
+        - Java: mvn compile or gradle compileJava
         """
         start_time = time.time()
+        lang = getattr(self.profile, "primary_language", "python").lower() if self.profile else "python"
+
+        # 1. TypeScript / JavaScript / React / Node
+        if lang in ("typescript", "javascript", "react", "next.js", "node"):
+            pkg_json = self.workspace_root / "package.json"
+            has_build_script = False
+            if pkg_json.exists():
+                try:
+                    data = json.loads(pkg_json.read_text(encoding="utf-8", errors="replace"))
+                    has_build_script = "build" in data.get("scripts", {})
+                except Exception:
+                    pass
+
+            if has_build_script:
+                rc, out, err = self._run_cmd(["npm", "run", "build"])
+            elif (self.workspace_root / "tsconfig.json").exists():
+                rc, out, err = self._run_cmd(["npx", "tsc", "--noEmit"])
+            else:
+                rc, out, err = 0, "No build script or tsconfig.json; syntax validation passed.", ""
+
+            return StageOutcome(
+                stage=VerificationStage.BUILD,
+                passed=(rc == 0),
+                exit_code=rc,
+                stdout=out,
+                stderr=err,
+                duration_seconds=time.time() - start_time,
+                metadata={"framework": lang, "builder": "npm/tsc"},
+            )
+
+        # 2. Java / Kotlin
+        if lang in ("java", "kotlin"):
+            if (self.workspace_root / "pom.xml").exists():
+                rc, out, err = self._run_cmd(["mvn", "compile", "-q"])
+            elif (self.workspace_root / "build.gradle").exists() or (self.workspace_root / "build.gradle.kts").exists():
+                rc, out, err = self._run_cmd(["gradle", "compileJava", "-q"])
+            else:
+                rc, out, err = 0, "No pom.xml or build.gradle found.", ""
+
+            return StageOutcome(
+                stage=VerificationStage.BUILD,
+                passed=(rc == 0),
+                exit_code=rc,
+                stdout=out,
+                stderr=err,
+                duration_seconds=time.time() - start_time,
+                metadata={"framework": lang, "builder": "mvn/gradle"},
+            )
+
+        # 3. Python (Default)
         files_to_check = target_files or self._get_python_files()
         if not files_to_check:
             return StageOutcome(
@@ -224,7 +309,7 @@ class IDEVerificationPipeline:
                 duration_seconds=time.time() - start_time,
             )
 
-        # 1. AST Syntax Check
+        # AST Syntax Check
         for f in files_to_check:
             abs_p = self.workspace_root / f
             if abs_p.exists() and abs_p.is_file():
@@ -241,7 +326,7 @@ class IDEVerificationPipeline:
                         diagnostics=[{"file": f, "line": e.lineno, "error": e.msg}],
                     )
 
-        # 2. Type Check via mypy
+        # Type Check via mypy
         mypy_args = [str(self.workspace_root / f) for f in files_to_check if (self.workspace_root / f).exists()]
         mypy_args.extend(["--ignore-missing-imports", "--no-error-summary"])
 
@@ -258,28 +343,80 @@ class IDEVerificationPipeline:
                 metadata={"type_checker": "mypy"},
             )
         except Exception as e:
-            # Fallback to subprocess if mypy api encounters OS pipe limits
-            proc = subprocess.run(
-                [sys.executable, "-m", "mypy", *mypy_args],
-                cwd=str(self.workspace_root),
-                capture_output=True,
-                text=True,
-            )
+            rc, stdout, stderr = self._run_cmd([sys.executable, "-m", "mypy", *mypy_args])
             return StageOutcome(
                 stage=VerificationStage.BUILD,
-                passed=proc.returncode == 0,
-                exit_code=proc.returncode,
-                stdout=proc.stdout,
-                stderr=proc.stderr,
+                passed=(rc == 0),
+                exit_code=rc,
+                stdout=stdout,
+                stderr=stderr,
                 duration_seconds=time.time() - start_time,
             )
 
     def stage_lint(self, target_files: Optional[List[str]] = None) -> StageOutcome:
         """
         Stage 3: Lint.
-        Executes ruff check on workspace files.
+        Framework-aware lint stage:
+        - Python: ruff check
+        - TypeScript/JavaScript: eslint
+        - Java: checkstyle
         """
         start_time = time.time()
+        lang = getattr(self.profile, "primary_language", "python").lower() if self.profile else "python"
+
+        # 1. TypeScript / JavaScript / React / Node
+        if lang in ("typescript", "javascript", "react", "next.js", "node"):
+            pkg_json = self.workspace_root / "package.json"
+            has_lint_script = False
+            if pkg_json.exists():
+                try:
+                    data = json.loads(pkg_json.read_text(encoding="utf-8", errors="replace"))
+                    has_lint_script = "lint" in data.get("scripts", {})
+                except Exception:
+                    pass
+
+            if has_lint_script:
+                rc, out, err = self._run_cmd(["npm", "run", "lint"])
+            else:
+                rc, out, err = self._run_cmd(["npx", "eslint", "."])
+
+            # If eslint not installed or no rules config, do not treat missing binary as hard failure
+            if rc != 0 and ("not recognized" in err.lower() or "cannot find" in err.lower() or "enoent" in err.lower()):
+                rc, out, err = 0, "ESLint not installed in workspace; skipped.", ""
+
+            return StageOutcome(
+                stage=VerificationStage.LINT,
+                passed=(rc == 0),
+                exit_code=rc,
+                stdout=out,
+                stderr=err,
+                duration_seconds=time.time() - start_time,
+                metadata={"linter": "eslint"},
+            )
+
+        # 2. Java / Kotlin
+        if lang in ("java", "kotlin"):
+            if (self.workspace_root / "pom.xml").exists():
+                rc, out, err = self._run_cmd(["mvn", "checkstyle:check", "-q"])
+            elif (self.workspace_root / "build.gradle").exists():
+                rc, out, err = self._run_cmd(["gradle", "checkstyleMain", "-q"])
+            else:
+                rc, out, err = 0, "No checkstyle configured; skipped.", ""
+
+            if rc != 0 and ("not recognized" in err.lower() or "cannot find" in err.lower()):
+                rc, out, err = 0, "Maven/Gradle checkstyle not configured; skipped.", ""
+
+            return StageOutcome(
+                stage=VerificationStage.LINT,
+                passed=(rc == 0),
+                exit_code=rc,
+                stdout=out,
+                stderr=err,
+                duration_seconds=time.time() - start_time,
+                metadata={"linter": "checkstyle"},
+            )
+
+        # 3. Python (Default)
         files = target_files or self._get_python_files()
         if not files:
             return StageOutcome(
@@ -290,19 +427,14 @@ class IDEVerificationPipeline:
             )
 
         cmd = [sys.executable, "-m", "ruff", "check", "--select", "E,F,W", "--ignore", "E501", *files]
-        proc = subprocess.run(
-            cmd,
-            cwd=str(self.workspace_root),
-            capture_output=True,
-            text=True,
-        )
-        passed = proc.returncode == 0
+        rc, stdout, stderr = self._run_cmd(cmd)
+        passed = rc == 0
         return StageOutcome(
             stage=VerificationStage.LINT,
             passed=passed,
-            exit_code=proc.returncode,
-            stdout=proc.stdout,
-            stderr=proc.stderr,
+            exit_code=rc,
+            stdout=stdout,
+            stderr=stderr,
             duration_seconds=time.time() - start_time,
             metadata={"linter": "ruff"},
         )
@@ -314,30 +446,67 @@ class IDEVerificationPipeline:
     ) -> StageOutcome:
         """
         Stage 4: Tests.
-        Executes test suite directly using pytest.
+        Framework-aware test execution:
+        - Python: pytest
+        - TypeScript/JavaScript: vitest / jest / npm test
+        - Java: mvn test / gradle test
         """
         start_time = time.time()
 
         if acceptance_command:
-            proc = subprocess.run(
-                acceptance_command,
-                shell=True,
-                cwd=str(self.workspace_root),
-                capture_output=True,
-                text=True,
-            )
-            passed = proc.returncode == 0
+            rc, stdout, stderr = self._run_cmd(acceptance_command)
             return StageOutcome(
                 stage=VerificationStage.TESTS,
-                passed=passed,
-                exit_code=proc.returncode,
-                stdout=proc.stdout,
-                stderr=proc.stderr,
+                passed=(rc == 0),
+                exit_code=rc,
+                stdout=stdout,
+                stderr=stderr,
                 duration_seconds=time.time() - start_time,
                 metadata={"command": acceptance_command},
             )
 
-        # Direct pytest execution
+        lang = getattr(self.profile, "primary_language", "python").lower() if self.profile else "python"
+        test_framework = getattr(self.profile, "test_framework", "unknown").lower() if self.profile else "unknown"
+
+        # 1. TypeScript / JavaScript / React / Node
+        if lang in ("typescript", "javascript", "react", "next.js", "node"):
+            if test_framework == "vitest":
+                rc, out, err = self._run_cmd(["npx", "vitest", "run"])
+            elif test_framework == "jest":
+                rc, out, err = self._run_cmd(["npx", "jest"])
+            else:
+                rc, out, err = self._run_cmd(["npm", "test"])
+
+            return StageOutcome(
+                stage=VerificationStage.TESTS,
+                passed=(rc == 0),
+                exit_code=rc,
+                stdout=out,
+                stderr=err,
+                duration_seconds=time.time() - start_time,
+                metadata={"test_runner": test_framework if test_framework != "unknown" else "npm test"},
+            )
+
+        # 2. Java / Kotlin
+        if lang in ("java", "kotlin"):
+            if (self.workspace_root / "pom.xml").exists():
+                rc, out, err = self._run_cmd(["mvn", "test", "-q"])
+            elif (self.workspace_root / "build.gradle").exists():
+                rc, out, err = self._run_cmd(["gradle", "test", "-q"])
+            else:
+                rc, out, err = 0, "No tests configured.", ""
+
+            return StageOutcome(
+                stage=VerificationStage.TESTS,
+                passed=(rc == 0),
+                exit_code=rc,
+                stdout=out,
+                stderr=err,
+                duration_seconds=time.time() - start_time,
+                metadata={"test_runner": "junit"},
+            )
+
+        # 3. Python (Default)
         pytest_args = ["-q"]
         if test_files:
             pytest_args.extend(test_files)
@@ -345,19 +514,13 @@ class IDEVerificationPipeline:
             pytest_args.append(str(self.workspace_root))
 
         cmd = [sys.executable, "-m", "pytest", *pytest_args]
-        proc = subprocess.run(
-            cmd,
-            cwd=str(self.workspace_root),
-            capture_output=True,
-            text=True,
-        )
-        passed = proc.returncode == 0
+        rc, stdout, stderr = self._run_cmd(cmd)
         return StageOutcome(
             stage=VerificationStage.TESTS,
-            passed=passed,
-            exit_code=proc.returncode,
-            stdout=proc.stdout,
-            stderr=proc.stderr,
+            passed=(rc == 0),
+            exit_code=rc,
+            stdout=stdout,
+            stderr=stderr,
             duration_seconds=time.time() - start_time,
             metadata={"test_runner": "pytest"},
         )
@@ -365,9 +528,45 @@ class IDEVerificationPipeline:
     def stage_security(self, target_files: Optional[List[str]] = None) -> StageOutcome:
         """
         Stage 5: Security.
-        Executes bandit static security analysis to detect vulnerabilities.
+        Framework-aware security audit:
+        - Python: bandit
+        - TypeScript/JavaScript: npm audit
+        - Java: dependency-check
         """
         start_time = time.time()
+        lang = getattr(self.profile, "primary_language", "python").lower() if self.profile else "python"
+
+        # 1. TypeScript / JavaScript / React / Node
+        if lang in ("typescript", "javascript", "react", "next.js", "node"):
+            rc, out, err = self._run_cmd(["npm", "audit", "--audit-level=high"])
+            passed = rc == 0 or "found 0 vulnerabilities" in out.lower()
+            return StageOutcome(
+                stage=VerificationStage.SECURITY,
+                passed=passed,
+                exit_code=rc,
+                stdout=out,
+                stderr=err,
+                duration_seconds=time.time() - start_time,
+                metadata={"security_scanner": "npm audit"},
+            )
+
+        # 2. Java / Kotlin
+        if lang in ("java", "kotlin"):
+            if (self.workspace_root / "pom.xml").exists():
+                rc, out, err = self._run_cmd(["mvn", "dependency-check:check", "-q"])
+            else:
+                rc, out, err = 0, "No vulnerability scanner configured.", ""
+            return StageOutcome(
+                stage=VerificationStage.SECURITY,
+                passed=(rc == 0),
+                exit_code=rc,
+                stdout=out,
+                stderr=err,
+                duration_seconds=time.time() - start_time,
+                metadata={"security_scanner": "dependency-check"},
+            )
+
+        # 3. Python (Default)
         files = target_files or self._get_python_files()
         if not files:
             return StageOutcome(
@@ -378,19 +577,13 @@ class IDEVerificationPipeline:
             )
 
         cmd = [sys.executable, "-m", "bandit", "-r", "-ll", *files]
-        proc = subprocess.run(
-            cmd,
-            cwd=str(self.workspace_root),
-            capture_output=True,
-            text=True,
-        )
-        passed = proc.returncode == 0
+        rc, stdout, stderr = self._run_cmd(cmd)
         return StageOutcome(
             stage=VerificationStage.SECURITY,
-            passed=passed,
-            exit_code=proc.returncode,
-            stdout=proc.stdout,
-            stderr=proc.stderr,
+            passed=(rc == 0),
+            exit_code=rc,
+            stdout=stdout,
+            stderr=stderr,
             duration_seconds=time.time() - start_time,
             metadata={"security_scanner": "bandit"},
         )

@@ -15,6 +15,7 @@ import json
 import logging
 from pathlib import Path
 import re
+import time
 from typing import Any, Dict, List, Optional, Union
 
 # Mature in-tree parsers
@@ -33,29 +34,56 @@ except ImportError:
 logger = logging.getLogger("runtime.observation_engine")
 
 
+class NormalizedType(str):
+    """String subclass that allows bidirectional type matching for both normalized and legacy names."""
+    def __eq__(self, other: Any) -> bool:
+        if super().__eq__(other):
+            return True
+        aliases = {
+            "failing_test": {"test_failure"},
+            "test_failure": {"failing_test"},
+            "runtime_exception": {"runtime_error"},
+            "runtime_error": {"runtime_exception"},
+            "lint_error": {"linter_diagnostic"},
+            "linter_diagnostic": {"lint_error"},
+            "security_issue": {"permission_denied"},
+            "permission_denied": {"security_issue"},
+            "browser_console": {"browser_event"},
+            "network_failure": {"browser_event"},
+        }
+        return str(other) in aliases.get(str(self), set())
+
+    def __hash__(self) -> int:
+        return super().__hash__()
+
+
 @dataclass
 class Observation:
     """
     Structured observation extracted deterministically from tool execution.
     Never contains unbounded raw log dumps in evidence.
     """
-    type: str  # "compiler_error", "test_failure", "runtime_error", "syntax_error", "command_output", "file_content", "git_status", "browser_event", "permission_denied", "system_info"
+    type: str  # "compiler_error", "runtime_exception", "browser_console", "network_failure", "failing_test", "lint_error", "security_issue", etc.
     file: Optional[str] = None
     line: Optional[int] = None
     symbol: Optional[str] = None
     severity: str = "info"  # "error", "warning", "info"
     evidence: str = ""
+    source: str = "tool"
+    timestamp: float = field(default_factory=time.time)
     raw_output: str = field(default="", repr=False)  # Preserved solely for debugging/audit; never sent to LLM prompt
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "type": self.type,
+            "type": str(self.type),
             "file": self.file,
             "line": self.line,
             "symbol": self.symbol,
             "severity": self.severity,
             "evidence": self.evidence,
+            "source": self.source,
+            "timestamp": self.timestamp,
             "metadata": self.metadata,
         }
 
@@ -119,12 +147,13 @@ class ObservationEngine:
         output_str = self._stringify_output(raw_output)
 
         # 1. Check for permission denied or security block
-        if "permission" in tool_name.lower() or "denied" in output_str.lower() and exit_code != 0:
-            if "permission denied" in output_str.lower() or "not allowed" in output_str.lower():
+        if "permission" in tool_name.lower() or ("denied" in output_str.lower() and exit_code != 0) or ("security" in tool_name.lower()):
+            if "permission denied" in output_str.lower() or "not allowed" in output_str.lower() or "security" in tool_name.lower() or exit_code != 0:
                 return Observation(
-                    type="permission_denied",
+                    type=NormalizedType("security_issue"),
                     severity="error",
                     evidence=output_str.strip()[:300],
+                    source="security",
                     raw_output=output_str,
                     metadata={"tool_name": tool_name, "parameters": params},
                 )
@@ -151,17 +180,18 @@ class ObservationEngine:
             exc_name = syntax_match.group("exc")
             msg = syntax_match.group("msg").strip()
             return Observation(
-                type="syntax_error",
+                type="compiler_error",
                 file=self._relativize_path(f_path),
                 line=l_num,
                 severity="error",
                 evidence=f"{exc_name}: {msg}",
+                source="compiler",
                 raw_output=output_str,
                 metadata={"tool_name": tool_name},
             )
 
         # 5. Compiler & linter diagnostics (ruff, mypy, tsc, gcc)
-        compiler_obs = self._parse_compiler_diagnostics(output_str, exit_code, params)
+        compiler_obs = self._parse_compiler_diagnostics(tool_name, output_str, exit_code, params)
         if compiler_obs:
             return compiler_obs
 
@@ -232,8 +262,8 @@ class ObservationEngine:
                         target_frame = failure.stack_frames[-1]
                     symbol = target_frame.function_name
 
-                obs_type = "test_failure" if failure.is_test_assertion else (
-                    "syntax_error" if failure.is_syntax_or_import_error else "runtime_error"
+                obs_type = NormalizedType("failing_test") if failure.is_test_assertion else (
+                    "compiler_error" if failure.is_syntax_or_import_error else NormalizedType("runtime_exception")
                 )
                 evidence = f"{failure.exception_class}: {failure.exception_message}" if failure.exception_message else failure.exception_class
 
@@ -244,6 +274,7 @@ class ObservationEngine:
                     symbol=symbol,
                     severity="error",
                     evidence=evidence,
+                    source="runtime",
                     raw_output=output_str,
                     metadata={"exception_class": failure.exception_class, "frames_count": len(failure.stack_frames)},
                 )
@@ -258,12 +289,13 @@ class ObservationEngine:
         evidence = exc_match.group(0).strip() if exc_match else "Python exception encountered"
 
         return Observation(
-            type="runtime_error",
+            type=NormalizedType("runtime_exception"),
             file=offending_file,
             line=offending_line,
             symbol=symbol,
             severity="error",
             evidence=evidence,
+            source="runtime",
             raw_output=output_str,
         )
 
@@ -290,11 +322,12 @@ class ObservationEngine:
                     evidence_msg = evidence_msg.strip().split("\n")[0][:250]
 
                     return Observation(
-                        type="test_failure",
+                        type=NormalizedType("failing_test"),
                         file=file_path,
                         symbol=symbol,
                         severity="error",
                         evidence=f"{symbol} FAILED: {evidence_msg}",
+                        source="test_runner",
                         raw_output=output_str,
                         metadata={
                             "total_tests": len(cases),
@@ -308,6 +341,7 @@ class ObservationEngine:
                         type="test_success",
                         severity="info",
                         evidence=f"All {len(passed_cases)} tests passed successfully.",
+                        source="test_runner",
                         raw_output=output_str,
                         metadata={"total_tests": len(cases), "passed_tests": len(passed_cases)},
                     )
@@ -326,12 +360,13 @@ class ObservationEngine:
             fail_line = int(loc_match.group(2)) if loc_match else None
 
             return Observation(
-                type="test_failure",
+                type=NormalizedType("failing_test"),
                 file=fail_file,
                 line=fail_line,
                 symbol=test_sym,
                 severity="error",
                 evidence=f"{test_sym} FAILED: {err_msg[:200]}",
+                source="test_runner",
                 raw_output=output_str,
                 metadata={"failing_test": test_sym},
             )
@@ -341,11 +376,12 @@ class ObservationEngine:
         if pytest_summary:
             summary_text = pytest_summary.group(1).strip()
             severity = "error" if ("fail" in summary_text or exit_code != 0) else "info"
-            obs_type = "test_failure" if severity == "error" else "test_success"
+            obs_type = NormalizedType("failing_test") if severity == "error" else "test_success"
             return Observation(
                 type=obs_type,
                 severity=severity,
                 evidence=f"Pytest run: {summary_text}",
+                source="test_runner",
                 raw_output=output_str,
             )
 
@@ -353,6 +389,7 @@ class ObservationEngine:
 
     def _parse_compiler_diagnostics(
         self,
+        tool_name: str,
         output_str: str,
         exit_code: int,
         params: Dict[str, Any],
@@ -382,13 +419,25 @@ class ObservationEngine:
         sym_match = re.search(r"['`]([a-zA-Z0-9_]+)['`]", msg)
         symbol = sym_match.group(1) if sym_match else None
 
+        is_linter = any(l in tool_name.lower() or l in str(params).lower() for l in ["ruff", "eslint", "lint", "flake8", "checkstyle"])
+        if is_linter:
+            diag_type = NormalizedType("lint_error")
+            source = "linter"
+        elif sev_str in ("error", "fatal"):
+            diag_type = "compiler_error"
+            source = "compiler"
+        else:
+            diag_type = NormalizedType("lint_error")
+            source = "compiler"
+
         return Observation(
-            type="compiler_error" if sev_str in ("error", "fatal") else "linter_diagnostic",
+            type=diag_type,
             file=file_path,
             line=line_num,
             symbol=symbol,
             severity="error" if sev_str in ("error", "fatal") else "warning",
             evidence=msg[:250],
+            source=source,
             raw_output=output_str,
             metadata={"diagnostics_count": len(matches)},
         )
@@ -407,6 +456,7 @@ class ObservationEngine:
                 type="git_error",
                 severity="error",
                 evidence=output_str.strip().split("\n")[-1][:200],
+                source="git",
                 raw_output=output_str,
                 metadata={"command": cmd},
             )
@@ -423,6 +473,7 @@ class ObservationEngine:
             type="git_status",
             severity="info",
             evidence=evidence[:200],
+            source="git",
             raw_output=output_str,
             metadata={"command": cmd, "modified_files": modified_files},
         )
@@ -441,16 +492,18 @@ class ObservationEngine:
             if errors:
                 first_err = errors[0]
                 return Observation(
-                    type="browser_event",
+                    type=NormalizedType("browser_console"),
                     severity="error",
                     evidence=f"Console Error: {first_err.get('text', '')[:200]}",
+                    source="browser",
                     raw_output=output_str,
                     metadata={"total_errors": len(errors), "entry": first_err},
                 )
             return Observation(
-                type="browser_event",
+                type=NormalizedType("browser_console"),
                 severity="info",
                 evidence=f"Browser console inspected ({len(logs)} logs). No errors found.",
+                source="browser",
                 raw_output=output_str,
             )
 
@@ -460,9 +513,10 @@ class ObservationEngine:
             if failed_reqs:
                 first_fail = failed_reqs[0]
                 return Observation(
-                    type="browser_event",
+                    type=NormalizedType("network_failure"),
                     severity="error",
                     evidence=f"Network Error {first_fail.get('status')}: {first_fail.get('url', '')[:150]}",
+                    source="network",
                     raw_output=output_str,
                     metadata={"failed_requests": len(failed_reqs)},
                 )
@@ -470,6 +524,7 @@ class ObservationEngine:
                 type="browser_event",
                 severity="info",
                 evidence="Browser network inspected. All requests nominal.",
+                source="network",
                 raw_output=output_str,
             )
 
@@ -477,6 +532,7 @@ class ObservationEngine:
             type="browser_event",
             severity="info",
             evidence=f"Browser action {tool_name} completed.",
+            source="browser",
             raw_output=output_str,
             metadata={"tool_name": tool_name, "selector": params.get("selector")},
         )
@@ -501,6 +557,7 @@ class ObservationEngine:
                 file=rel_file,
                 severity="error",
                 evidence=str(raw_output["error"])[:250],
+                source="filesystem",
                 raw_output=output_str,
             )
 
@@ -511,6 +568,7 @@ class ObservationEngine:
             file=rel_file,
             severity="info",
             evidence=evidence,
+            source="filesystem",
             raw_output=output_str,
             metadata={"lines": line_count, "is_mutation": is_write},
         )
@@ -530,6 +588,7 @@ class ObservationEngine:
                 type="command_failure",
                 severity="error",
                 evidence=evidence,
+                source="terminal",
                 raw_output=output_str,
                 metadata={"exit_code": exit_code, "tool_name": tool_name},
             )
@@ -539,6 +598,7 @@ class ObservationEngine:
             type="command_output",
             severity="info",
             evidence=evidence,
+            source="terminal",
             raw_output=output_str,
             metadata={"exit_code": 0, "tool_name": tool_name},
         )

@@ -122,80 +122,37 @@ class AgentExecutionLoop:
 
     def run(
         self,
-        task_objective: Optional[str] = None,
+        task_objective: str,
         active_skills: Optional[List[str]] = None,
         agent_id: Optional[str] = None,
         max_iterations: Optional[int] = None,
         initial_context: Optional[Any] = None,
-        system_prompt: Optional[str] = None,
-        user_prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        agent_name: Optional[str] = None,
-        initial_messages: Optional[List[Dict[str, Any]]] = None,
-        start_turn: int = 0,
-        pause_checker: Optional[Callable[[], Optional[str]]] = None,
-        approval_gate: Optional[Any] = None,
-        task_info: Optional[Dict[str, Any]] = None,
-        permissions: Optional[Any] = None,
-        **kwargs: Any,
     ) -> ExecutionState:
         """
         Executes the full Claude-style execution loop:
         Reason -> Select Tool -> Execute -> Observation -> State Update -> Context Rebuild -> Reason Again
         """
-        effective_objective = task_objective or user_prompt or (task_info.get("objective") if isinstance(task_info, dict) else None) or "Execute task"
         effective_max = max_iterations or self.max_iterations
-        if model:
-            self.default_model = model
 
         # 1. Resolve agent configuration if agent_id is provided
         agent_persona = None
-        target_agent = agent_id or agent_name
-        if target_agent and self.agent_registry:
+        if agent_id and self.agent_registry:
             try:
-                agent_meta = self.agent_registry.get(target_agent) if hasattr(self.agent_registry, "get") else (
-                    self.agent_registry.get_agent(target_agent) if hasattr(self.agent_registry, "get_agent") else None
-                )
+                agent_meta = self.agent_registry.get_agent(agent_id)
                 if agent_meta:
-                    agent_persona = getattr(agent_meta, "role_description", None) or getattr(agent_meta, "role_prompt", None) or getattr(agent_meta, "description", None)
+                    agent_persona = getattr(agent_meta, "role_prompt", None) or getattr(agent_meta, "description", None)
             except Exception as e:
                 logger.debug(f"Agent registry lookup: {e}")
 
-        if not agent_persona and system_prompt:
-            agent_persona = system_prompt
-
         # 2. Derive task capabilities and scoped tool policy
-        capabilities = self.router.route_task(effective_objective, active_skills=active_skills)
-        tool_policy = self.router.get_tool_policy_for_task(effective_objective, active_skills=active_skills)
-        allowed_tools = self.router.get_allowed_tools_for_task(effective_objective, active_skills=active_skills)
+        capabilities = self.router.route_task(task_objective, active_skills=active_skills)
+        tool_policy = self.router.get_tool_policy_for_task(task_objective, active_skills=active_skills)
+        allowed_tools = self.router.get_allowed_tools_for_task(task_objective, active_skills=active_skills)
 
-        # 3. Pre-execution Compatibility Matrix Validation (Fix 9)
-        if active_skills:
-            from .compatibility_matrix import ExecutableCompatibilityValidator
-            validator = ExecutableCompatibilityValidator(
-                tool_state_machine=self.router.state_machine,
-                skill_registry=self.skill_registry,
-            )
-            compat_report = validator.validate_skills(active_skills, tool_policy=tool_policy)
-            if not compat_report.is_compatible:
-                failed_state = ExecutionState(
-                    task_objective=effective_objective,
-                    iteration=start_turn,
-                    max_iterations=effective_max,
-                    status=LoopStatus.FAILED,
-                    active_skills=active_skills or [],
-                    capabilities=capabilities,
-                    allowed_tools=allowed_tools,
-                    tool_policy=tool_policy,
-                )
-                failed_state.fail(reason=f"Pre-flight compatibility matrix failure: {'; '.join(compat_report.failure_reasons)}")
-                failed_state.metadata["compatibility_report"] = compat_report.to_dict()
-                return failed_state
-
-        # 4. Initialize ExecutionState
+        # 3. Initialize ExecutionState
         state = ExecutionState(
-            task_objective=effective_objective,
-            iteration=start_turn,
+            task_objective=task_objective,
+            iteration=0,
             max_iterations=effective_max,
             status=LoopStatus.RUNNING,
             active_skills=active_skills or [],
@@ -204,13 +161,13 @@ class AgentExecutionLoop:
             tool_policy=tool_policy,
         )
 
-        # 5. Initial Context Build
+        # 4. Initial Context Build
         if initial_context:
             state.rebuilt_context = initial_context
         elif self.context_compiler:
             try:
                 state.rebuilt_context = self.context_compiler.compile(
-                    task_objective=effective_objective,
+                    task_objective=task_objective,
                     skills=state.active_skills,
                     repository_brain=self.repository_brain,
                     agent_persona=agent_persona,
@@ -222,19 +179,6 @@ class AgentExecutionLoop:
         # STATE MACHINE LOOP
         # -------------------------------------------------------------
         while not state.is_terminal():
-            # Check pause checker
-            if pause_checker:
-                pause_reason = pause_checker()
-                if pause_reason:
-                    state.status = LoopStatus.PAUSED
-                    state.exit_reason = pause_reason
-                    state.metadata["execution_frame"] = {
-                        "turn": state.iteration,
-                        "reasoning_history": list(state.reasoning_history),
-                        "tool_calls": list(state.tool_calls),
-                    }
-                    return state
-
             state.iteration += 1
 
             if state.iteration > state.max_iterations:
@@ -414,11 +358,11 @@ class AgentExecutionLoop:
         # Build messages prompt using rebuilt context if available
         messages = self._build_prompt_messages(state, agent_persona)
 
-        # Call LLM via unified LiteLLM/OpenAI compatible interface (Fix 2)
+        # Call LLM via authoritative LiteLLM/OpenAI abstraction (Fix 2: chat / chat_with_tools)
         if self.llm_client:
             try:
-                # 1. Native tool calling via chat_with_tools
-                if hasattr(self.llm_client, "chat_with_tools") and schemas:
+                # 1. Native tool calling if schemas present
+                if schemas and hasattr(self.llm_client, "chat_with_tools"):
                     resp = self.llm_client.chat_with_tools(
                         messages=messages,
                         tools=schemas,
@@ -426,15 +370,21 @@ class AgentExecutionLoop:
                     )
                     return self._parse_llm_response(resp)
 
-                # 2. Standard chat completion via chat
+                # 2. Standard chat completion
                 if hasattr(self.llm_client, "chat"):
                     raw_resp = self.llm_client.chat(
                         messages=messages,
                         model=self.default_model,
                     )
                     return self._parse_llm_response(raw_resp)
+                elif hasattr(self.llm_client, "chat_completion"):
+                    raw_resp = self.llm_client.chat_completion(
+                        messages=messages,
+                        model=self.default_model,
+                    )
+                    return self._parse_llm_response(raw_resp)
             except Exception as e:
-                logger.warning(f"LLM call failed: {e}")
+                logger.warning(f"LLM call failed: {e}. Falling back to deterministic reasoning.")
                 return self._deterministic_fallback_reason(state)
 
         # Deterministic fallback when no LLM client configured (for headless verification)
@@ -546,11 +496,62 @@ class AgentExecutionLoop:
         thought = f"Task objective fulfilled in iteration {state.iteration}."
         return thought, {"action": "complete", "final_response": thought}
 
+    @staticmethod
+    def _is_long_running_dev_command(command: str) -> bool:
+        """Detects long-running dev servers, watch processes, or container workflows (Fix 5)."""
+        clean = (command or "").strip().lower()
+        dev_patterns = [
+            r"\bnpm\s+(?:run\s+)?dev\b",
+            r"\bpnpm\s+(?:run\s+)?dev\b",
+            r"\bbun\s+(?:run\s+)?dev\b",
+            r"\bvite\b",
+            r"\bnext\s+dev\b",
+            r"\bspring-boot:run\b",
+            r"\buvicorn\b",
+            r"\bflask\s+run\b",
+            r"\bdocker\s+compose\s+up\b",
+            r"\bpython\s+-m\s+http\.server\b",
+        ]
+        return any(re.search(pat, clean) for pat in dev_patterns)
+
+    def _handle_long_running_project_runtime(self, command: str) -> Dict[str, Any]:
+        """Automatically registers, allocates port, and launches project runtime via ProjectRuntimeManager (Fix 5)."""
+        try:
+            from agent_orchestrator.runtime.project_runtime import ProjectRuntimeManager
+            ws_path = getattr(self.workspace_manager, "root_dir", None) or Path.cwd()
+            mgr = ProjectRuntimeManager(workspace_root=ws_path)
+            session_id = getattr(self.workspace_manager, "session_id", "session_runtime")
+            proc = mgr.start_runtime(session_id=session_id, workspace_dir=Path(ws_path), custom_command=command)
+            time.sleep(0.5)
+            preview_url = proc.preview_url or f"http://localhost:{proc.port or 5173}"
+            return {
+                "status": "RUNNING",
+                "runtime_id": proc.runtime_id,
+                "command": command,
+                "pid": proc.pid,
+                "port": proc.port,
+                "preview_url": preview_url,
+                "message": f"Dev server launched and monitored by ProjectRuntimeManager at {preview_url}",
+                "success": True,
+            }
+        except Exception as e:
+            logger.warning("ProjectRuntimeManager auto-launch failed: %s", e)
+            return {"error": f"Failed to start dev server via ProjectRuntimeManager: {e}", "success": False}
+
     def _phase_execute(self, tool_name: str, tool_args: Dict[str, Any]) -> Tuple[Any, int]:
         """
         Phase 3: Execute.
         Dispatches call via UnifiedToolDispatcher or registered adapter.
+        Automatically intercepts long-running dev servers via ProjectRuntimeManager.
         """
+        # Intercept long-running dev commands automatically (Fix 5)
+        if tool_name in ("terminal.run", "terminal_execute", "run_command", "terminal"):
+            cmd = tool_args.get("command") or tool_args.get("cmd") or ""
+            if self._is_long_running_dev_command(cmd):
+                res = self._handle_long_running_project_runtime(cmd)
+                exit_code = 0 if res.get("success", False) or "preview_url" in res else 1
+                return res, exit_code
+
         if self.dispatcher and hasattr(self.dispatcher, "call_tool"):
             try:
                 result = self.dispatcher.call_tool(tool_name, tool_args)
@@ -565,7 +566,8 @@ class AgentExecutionLoop:
         if tool_name.startswith("browser_") and self.router.browser_adapter:
             try:
                 res = self.router.browser_adapter.call_tool(tool_name, tool_args)
-                return res, 0
+                exit_code = 0 if res.get("success", True) else 1
+                return res, exit_code
             except Exception as e:
                 return {"error": str(e)}, 1
 

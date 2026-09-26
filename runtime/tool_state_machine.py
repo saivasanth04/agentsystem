@@ -1,67 +1,63 @@
 """
-Tool Lifecycle State Machine.
-Enforces the 5-stage explicit lifecycle for every tool:
+Tool State Machine.
+Defines the authoritative 5-state tool lifecycle model:
 DECLARED -> DISCOVERED -> HEALTHY -> AUTHORIZED -> EXECUTABLE
-
-Only EXECUTABLE tools may be exposed to the model or invoked.
-Missing or unverified inventory tools remain non-executable with clear diagnostics.
+(with MISSING, UNHEALTHY, and UNAUTHORIZED terminal/failure states).
+Enforces the strict rule:
+Only EXECUTABLE tools may be exposed in model tool schemas or invoked by the agent.
+Never expose inventory-only or declared-only tools.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
 import logging
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 logger = logging.getLogger("runtime.tool_state_machine")
 
 
 class ToolLifecycleState(str, Enum):
-    DECLARED = "DECLARED"
-    DISCOVERED = "DISCOVERED"
-    HEALTHY = "HEALTHY"
-    AUTHORIZED = "AUTHORIZED"
-    EXECUTABLE = "EXECUTABLE"
-    MISSING = "MISSING"
-    UNHEALTHY = "UNHEALTHY"
-    UNAUTHORIZED = "UNAUTHORIZED"
+    """Authoritative lifecycle states for all tools in the system."""
+    DECLARED = "DECLARED"          # Defined in skill manifest, compatibility matrix, or inventory
+    DISCOVERED = "DISCOVERED"      # Located in BuiltinToolRegistry, MCPManager, or external provider
+    HEALTHY = "HEALTHY"            # Validated responsive and runnable without syntax/connectivity errors
+    AUTHORIZED = "AUTHORIZED"      # Permitted under active task capabilities and PermissionEngine policies
+    EXECUTABLE = "EXECUTABLE"      # Fully ready to be exposed to the LLM and executed
+
+    # Failure / Inactive States
+    MISSING = "MISSING"            # Declared or required but not found in the environment
+    UNHEALTHY = "UNHEALTHY"        # Discovered but failing health check or broken dependencies
+    UNAUTHORIZED = "UNAUTHORIZED"  # Blocked by permission policy or out of scope for task
 
 
 @dataclass
-class ToolStateRecord:
-    """Tracks state and diagnostics for a tool instance."""
+class ManagedTool:
+    """Represents a tool registered and tracked within the ToolStateMachine."""
     name: str
     state: ToolLifecycleState = ToolLifecycleState.DECLARED
+    source: str = "builtin"  # "builtin" | "mcp" | "skill" | "system"
     schema: Dict[str, Any] = field(default_factory=dict)
-    source: str = "builtin"  # 'builtin' | 'mcp'
-    server_name: Optional[str] = None
-    required_capabilities: List[str] = field(default_factory=list)
-    diagnostic_message: Optional[str] = None
-
-    def is_executable(self) -> bool:
-        return self.state == ToolLifecycleState.EXECUTABLE
+    description: str = ""
+    error_reason: Optional[str] = None
+    health_checker: Optional[Callable[[], bool]] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "name": self.name,
             "state": self.state.value,
             "source": self.source,
-            "server_name": self.server_name,
-            "required_capabilities": self.required_capabilities,
-            "diagnostic_message": self.diagnostic_message,
-            "is_executable": self.is_executable(),
+            "description": self.description,
+            "error_reason": self.error_reason,
+            "metadata": self.metadata,
         }
 
 
 class ToolStateMachine:
     """
-    Authoritative state machine governing tool exposure.
-    Transitions:
-    1. DECLARED: Listed in manifest/inventory or registered by capability.
-    2. DISCOVERED: Bound to a live implementation in UnifiedToolDispatcher or MCPManager.
-    3. HEALTHY: Health check probe passed; responsive and operational.
-    4. AUTHORIZED: Allowed by active ToolPolicy and PermissionEngine for the current task.
-    5. EXECUTABLE: Ready for invocation; only tools in this state are provided to the LLM.
+    Authoritative state machine governing the discovery, health, authorization,
+    and execution lifecycle of tools.
     """
 
     def __init__(
@@ -71,154 +67,270 @@ class ToolStateMachine:
     ):
         self.dispatcher = dispatcher
         self.mcp_manager = mcp_manager
-        self._tools: Dict[str, ToolStateRecord] = {}
+        self._tools: Dict[str, ManagedTool] = {}
 
     def declare_tool(
         self,
         name: str,
-        schema: Optional[Dict[str, Any]] = None,
         source: str = "builtin",
-        server_name: Optional[str] = None,
-        capabilities: Optional[List[str]] = None,
-    ) -> ToolStateRecord:
-        """Stage 1: Declare a tool in the state machine."""
-        record = ToolStateRecord(
-            name=name,
+        schema: Optional[Dict[str, Any]] = None,
+        description: str = "",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> ManagedTool:
+        """Declares a tool from manifest, inventory, or specification."""
+        clean_name = name.strip()
+        tool = ManagedTool(
+            name=clean_name,
             state=ToolLifecycleState.DECLARED,
-            schema=schema or {},
             source=source,
-            server_name=server_name,
-            required_capabilities=capabilities or [],
+            schema=schema or {},
+            description=description,
+            metadata=metadata or {},
         )
-        self._tools[name] = record
-        return record
+        self._tools[clean_name] = tool
+        return tool
 
-    def transition_discovered(self, name: str) -> ToolStateRecord:
-        """Stage 2: Verify tool existence in dispatcher or live MCP server."""
-        if name not in self._tools:
-            self.declare_tool(name)
-        record = self._tools[name]
+    def transition(
+        self,
+        name: str,
+        target_state: ToolLifecycleState,
+        error_reason: Optional[str] = None,
+    ) -> ManagedTool:
+        """Transitions a tool to a new lifecycle state with validation."""
+        clean_name = name.strip()
+        if clean_name not in self._tools:
+            self._tools[clean_name] = ManagedTool(name=clean_name)
 
-        # Check in dispatcher
-        exists_in_dispatcher = False
+        tool = self._tools[clean_name]
+        tool.state = target_state
+        if error_reason:
+            tool.error_reason = error_reason
+        elif target_state in (ToolLifecycleState.HEALTHY, ToolLifecycleState.AUTHORIZED, ToolLifecycleState.EXECUTABLE):
+            tool.error_reason = None
+
+        logger.debug("Tool '%s' transitioned to state: %s", clean_name, target_state.value)
+        return tool
+
+    def get_state(self, name: str) -> ToolLifecycleState:
+        """Returns the current lifecycle state of a tool, defaulting to DECLARED."""
+        tool = self._tools.get(name.strip())
+        return tool.state if tool else ToolLifecycleState.DECLARED
+
+    def is_executable(self, name: str) -> bool:
+        """Checks if a tool is strictly in EXECUTABLE state."""
+        tool = self._tools.get(name.strip())
+        return bool(tool and tool.state == ToolLifecycleState.EXECUTABLE)
+
+    def discover(self, name: str, source: str = "builtin") -> ManagedTool:
+        """Transitions a tool to DISCOVERED state."""
+        clean_name = name.strip()
+        if clean_name not in self._tools:
+            self.declare_tool(clean_name, source=source)
+        return self.transition(clean_name, ToolLifecycleState.DISCOVERED)
+
+    def mark_healthy(self, name: str) -> ManagedTool:
+        """Transitions a tool to HEALTHY state."""
+        return self.transition(name, ToolLifecycleState.HEALTHY)
+
+    def promote_to_executable(self, name: str) -> ManagedTool:
+        """Promotes a tool to EXECUTABLE state."""
+        return self.transition(name, ToolLifecycleState.EXECUTABLE)
+
+    def register_and_verify(
+        self,
+        name: str,
+        source: str = "builtin",
+        is_authorized: bool = True,
+    ) -> ManagedTool:
+        """Convenience method to register a tool and progress it to EXECUTABLE."""
+        clean_name = name.strip()
+        self.declare_tool(clean_name, source=source)
+        self.transition(clean_name, ToolLifecycleState.DISCOVERED)
+        self.transition(clean_name, ToolLifecycleState.HEALTHY)
+        if is_authorized:
+            self.transition(clean_name, ToolLifecycleState.AUTHORIZED)
+            self.transition(clean_name, ToolLifecycleState.EXECUTABLE)
+        return self._tools[clean_name]
+
+    def discover_tools(self) -> Dict[str, ManagedTool]:
+        """
+        Discovers tools from UnifiedToolDispatcher, BuiltinToolRegistry, and MCPManager.
+        Transitions existing DECLARED tools or registers new DISCOVERED tools.
+        """
+        discovered_names: Set[str] = set()
+
+        # 1. Inspect UnifiedToolDispatcher
         if self.dispatcher:
-            if hasattr(self.dispatcher, "has_tool") and self.dispatcher.has_tool(name):
-                exists_in_dispatcher = True
-            elif hasattr(self.dispatcher, "builtin_registry"):
-                br = self.dispatcher.builtin_registry
-                if hasattr(br, "has_tool") and br.has_tool(name):
-                    exists_in_dispatcher = True
-                elif hasattr(br, "_tools") and name in br._tools:
-                    exists_in_dispatcher = True
+            br = getattr(self.dispatcher, "builtin_registry", None)
+            if br:
+                tools_map = getattr(br, "_tools", {}) or getattr(br, "tools", {})
+                if isinstance(tools_map, dict):
+                    for t_name, t_val in tools_map.items():
+                        discovered_names.add(t_name)
+                        doc = getattr(t_val, "__doc__", "") or f"Built-in tool {t_name}"
+                        if t_name not in self._tools:
+                            self.declare_tool(t_name, source="builtin", description=doc)
+                        self.transition(t_name, ToolLifecycleState.DISCOVERED)
 
-        # Check in live MCP
-        exists_in_mcp = False
-        if not exists_in_dispatcher and self.mcp_manager:
-            if hasattr(self.mcp_manager, "is_tool_available") and self.mcp_manager.is_tool_available(name):
-                exists_in_mcp = True
-            elif hasattr(self.mcp_manager, "get_tool_info"):
-                info = self.mcp_manager.get_tool_info(name)
-                if info:
-                    exists_in_mcp = True
+        # 2. Inspect MCPManager
+        if self.mcp_manager and hasattr(self.mcp_manager, "list_tools"):
+            try:
+                mcp_tools = self.mcp_manager.list_tools()
+                for mt in mcp_tools:
+                    m_name = mt.get("name") if isinstance(mt, dict) else getattr(mt, "name", str(mt))
+                    if m_name:
+                        discovered_names.add(m_name)
+                        schema = mt if isinstance(mt, dict) else {}
+                        if m_name not in self._tools:
+                            self.declare_tool(m_name, source="mcp", schema=schema)
+                        self.transition(m_name, ToolLifecycleState.DISCOVERED)
+            except Exception as e:
+                logger.debug("MCPManager list_tools exception: %s", e)
 
-        if exists_in_dispatcher or exists_in_mcp:
-            record.state = ToolLifecycleState.DISCOVERED
-            record.diagnostic_message = None
-        else:
-            record.state = ToolLifecycleState.MISSING
-            record.diagnostic_message = f"Tool '{name}' not found in UnifiedToolDispatcher or active MCP servers."
+        # 3. Mark undeclared required tools as MISSING if needed
+        for t_name, tool in self._tools.items():
+            if tool.state == ToolLifecycleState.DECLARED and t_name not in discovered_names:
+                # If tool name has a known builtin implementation, discover it
+                if self._can_resolve_builtin(t_name):
+                    self.transition(t_name, ToolLifecycleState.DISCOVERED)
+                else:
+                    self.transition(t_name, ToolLifecycleState.MISSING, error_reason="Tool not discovered in any active registry or MCP server")
 
-        return record
+        return self._tools
 
-    def transition_healthy(self, name: str) -> ToolStateRecord:
-        """Stage 3: Run health checks to confirm tool readiness."""
-        record = self._tools.get(name)
-        if not record or record.state != ToolLifecycleState.DISCOVERED:
-            record = self.transition_discovered(name)
-        if record.state != ToolLifecycleState.DISCOVERED:
-            return record
+    def _can_resolve_builtin(self, name: str) -> bool:
+        """Checks if tool name maps to a known available builtin capability."""
+        common_builtins = {
+            "read_file", "write_file", "edit_file", "replace_file_content",
+            "list_directory", "terminal_execute", "run_command", "ast_syntax_check",
+            "regex_grep", "find_symbol", "get_call_graph", "get_impact_radius",
+            "get_dependencies", "complete_task",
+        }
+        return name in common_builtins or name.replace("filesystem.", "").replace("terminal.", "") in common_builtins
 
-        # Special check for browser tools: must connect to real MCP, no dummy adapters!
-        if name.startswith("browser_") or name.startswith("browser."):
-            is_real_browser_active = False
-            if self.mcp_manager:
-                active_servers = self.mcp_manager.list_servers() if hasattr(self.mcp_manager, "list_servers") else []
-                browser_servers = {"chrome-devtools", "puppeteer", "browser", "playwright"}
-                if any(s.lower() in browser_servers for s in active_servers):
-                    is_real_browser_active = True
+    def verify_health(self, tool_name: str) -> bool:
+        """Validates that a discovered tool is healthy and callable."""
+        clean_name = tool_name.strip()
+        tool = self._tools.get(clean_name)
+        if not tool or tool.state in (ToolLifecycleState.DECLARED, ToolLifecycleState.MISSING):
+            return False
 
-            if not is_real_browser_active:
-                record.state = ToolLifecycleState.MISSING
-                record.diagnostic_message = f"Browser MCP server (chrome-devtools/puppeteer) is not connected. Fake browser adapters are prohibited."
-                return record
+        # Browser tools check
+        if "browser" in clean_name:
+            if not self._is_real_browser_mcp_available():
+                self.transition(clean_name, ToolLifecycleState.MISSING, error_reason="No real Chrome DevTools or Puppeteer MCP server connected")
+                return False
 
-        record.state = ToolLifecycleState.HEALTHY
-        return record
+        if tool.health_checker:
+            try:
+                is_healthy = tool.health_checker()
+                state = ToolLifecycleState.HEALTHY if is_healthy else ToolLifecycleState.UNHEALTHY
+                self.transition(clean_name, state)
+                return is_healthy
+            except Exception as e:
+                self.transition(clean_name, ToolLifecycleState.UNHEALTHY, error_reason=str(e))
+                return False
 
-    def transition_authorized(
-        self,
-        name: str,
-        tool_policy: Optional[Any] = None,
-        active_capabilities: Optional[List[str]] = None,
-    ) -> ToolStateRecord:
-        """Stage 4: Evaluate permissions and capability policies."""
-        record = self._tools.get(name)
-        if not record or record.state != ToolLifecycleState.HEALTHY:
-            record = self.transition_healthy(name)
-        if record.state != ToolLifecycleState.HEALTHY:
-            return record
+        # If already AUTHORIZED or EXECUTABLE, preserve it
+        if tool.state in (ToolLifecycleState.AUTHORIZED, ToolLifecycleState.EXECUTABLE):
+            return True
 
-        # Policy validation
-        if tool_policy:
-            allowed = False
-            if hasattr(tool_policy, "is_tool_allowed"):
-                allowed = tool_policy.is_tool_allowed(name)
-            elif hasattr(tool_policy, "allowed_tools"):
-                allowed = "*" in tool_policy.allowed_tools or name in tool_policy.allowed_tools
-            else:
-                allowed = True
+        # Default healthy if discovered
+        self.transition(clean_name, ToolLifecycleState.HEALTHY)
+        return True
 
-            if not allowed:
-                record.state = ToolLifecycleState.UNAUTHORIZED
-                record.diagnostic_message = f"Tool '{name}' is not authorized by active ToolPolicy."
-                return record
-
-        record.state = ToolLifecycleState.AUTHORIZED
-        return record
-
-    def transition_executable(
-        self,
-        name: str,
-        tool_policy: Optional[Any] = None,
-        active_capabilities: Optional[List[str]] = None,
-    ) -> ToolStateRecord:
-        """Stage 5: Final promotion to EXECUTABLE status."""
-        record = self.transition_authorized(name, tool_policy=tool_policy, active_capabilities=active_capabilities)
-        if record.state == ToolLifecycleState.AUTHORIZED:
-            record.state = ToolLifecycleState.EXECUTABLE
-            record.diagnostic_message = None
-        return record
-
-    def get_executable_tools(
-        self,
-        candidate_tool_names: List[str],
-        tool_policy: Optional[Any] = None,
-        active_capabilities: Optional[List[str]] = None,
-    ) -> List[ToolStateRecord]:
-        """Filters candidate tools and returns strictly those reaching EXECUTABLE status."""
-        executable = []
-        for name in candidate_tool_names:
-            rec = self.transition_executable(
-                name,
-                tool_policy=tool_policy,
-                active_capabilities=active_capabilities,
+    def _is_real_browser_mcp_available(self) -> bool:
+        """Validates whether a real browser MCP server is currently reachable."""
+        if not self.mcp_manager:
+            return False
+        if hasattr(self.mcp_manager, "is_server_running"):
+            return bool(
+                self.mcp_manager.is_server_running("chrome-devtools")
+                or self.mcp_manager.is_server_running("puppeteer")
+                or self.mcp_manager.is_server_running("mcp-server-browser")
             )
-            if rec.is_executable():
-                executable.append(rec)
-            else:
-                logger.info(f"Tool '{name}' excluded: state={rec.state.value} ({rec.diagnostic_message})")
-        return executable
+        if hasattr(self.mcp_manager, "list_servers"):
+            servers = self.mcp_manager.list_servers()
+            return any("browser" in s.lower() or "devtools" in s.lower() or "puppeteer" in s.lower() for s in servers)
+        return False
 
-    def get_tool_state(self, name: str) -> ToolLifecycleState:
-        record = self._tools.get(name)
-        return record.state if record else ToolLifecycleState.MISSING
+    def authorize(
+        self,
+        tool_name: str,
+        allowed_tools: Optional[Set[str]] = None,
+        permission_checker: Optional[Callable[[str], bool]] = None,
+        auto_promote: bool = False,
+    ) -> bool:
+        """
+        Validates whether a healthy tool is authorized for execution under active policy.
+        Transitions: HEALTHY -> AUTHORIZED (and optionally -> EXECUTABLE if auto_promote=True).
+        """
+        clean_name = tool_name.strip()
+        tool = self._tools.get(clean_name)
+        if not tool:
+            self.declare_tool(clean_name, source="builtin")
+            self.discover(clean_name)
+            tool = self._tools.get(clean_name)
+
+        if tool.state != ToolLifecycleState.HEALTHY and tool.state not in (ToolLifecycleState.AUTHORIZED, ToolLifecycleState.EXECUTABLE):
+            # Attempt health check first
+            if not self.verify_health(clean_name):
+                return False
+
+        # Check allowed tools filter
+        if allowed_tools is not None and clean_name not in allowed_tools:
+            # Check normalized alias
+            alias = clean_name.replace("filesystem.", "").replace("terminal.", "").replace("codebase.", "")
+            if alias not in allowed_tools:
+                self.transition(clean_name, ToolLifecycleState.UNAUTHORIZED, error_reason="Tool not in active capability allowed list")
+                return False
+
+        # Check custom permission checker if provided
+        if permission_checker is not None:
+            try:
+                allowed = permission_checker(clean_name)
+                if not allowed:
+                    self.transition(clean_name, ToolLifecycleState.UNAUTHORIZED, error_reason="Permission policy denied access")
+                    return False
+            except Exception as e:
+                self.transition(clean_name, ToolLifecycleState.UNAUTHORIZED, error_reason=str(e))
+                return False
+
+        # Transition to AUTHORIZED
+        self.transition(clean_name, ToolLifecycleState.AUTHORIZED)
+        if auto_promote:
+            self.transition(clean_name, ToolLifecycleState.EXECUTABLE)
+        return True
+
+    def get_executable_tools(self) -> List[ManagedTool]:
+        """Returns only tools that have reached the EXECUTABLE state."""
+        return [t for t in self._tools.values() if t.state == ToolLifecycleState.EXECUTABLE]
+
+    def get_executable_schemas(self) -> List[Dict[str, Any]]:
+        """
+        Strict invariant: Only EXECUTABLE tools may be exposed to the model.
+        Returns OpenAI-compatible schemas for all executable tools.
+        """
+        schemas = []
+        for tool in self.get_executable_tools():
+            if tool.schema and "function" in tool.schema:
+                schemas.append(tool.schema)
+            elif tool.schema and "name" in tool.schema:
+                schemas.append({
+                    "type": "function",
+                    "function": {
+                        "name": tool.schema.get("name", tool.name),
+                        "description": tool.schema.get("description", tool.description),
+                        "parameters": tool.schema.get("parameters", {"type": "object", "properties": {}}),
+                    }
+                })
+            else:
+                schemas.append({
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description or f"Executable tool: {tool.name}",
+                        "parameters": {"type": "object", "properties": {}},
+                    }
+                })
+        return schemas
