@@ -30,6 +30,11 @@ from .retrieval_hierarchy import (
     RetrievalHierarchyEngine,
     RetrievalLevel,
 )
+from context.budget import TokenCounter, ContextBudgetManager, BudgetAllocation
+from context.ranking import ContextRanker, RankedCandidate
+from context.dedup import ContextDeduplicator
+from context.pack import SkillSectionSlicer, RepositorySlicer, ConversationSlicer, OptimizedContextPackage
+from context.compiler import ContextCompiler
 
 __all__ = [
     "ContextBudget",
@@ -51,5 +56,16 @@ __all__ = [
     "HierarchicalContextItem",
     "RetrievalHierarchyEngine",
     "RetrievalLevel",
+    "TokenCounter",
+    "ContextBudgetManager",
+    "BudgetAllocation",
+    "ContextRanker",
+    "RankedCandidate",
+    "ContextDeduplicator",
+    "SkillSectionSlicer",
+    "RepositorySlicer",
+    "ConversationSlicer",
+    "OptimizedContextPackage",
+    "ContextCompiler",
 ]
 
