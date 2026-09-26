@@ -363,4 +363,64 @@ export const orchestratorApi = {
       method: 'POST',
       body: JSON.stringify(settings),
     }),
+
+  // -------------------------------------------------------------------------
+  // 9. Production IDE & Repository Intelligence
+  // -------------------------------------------------------------------------
+  verifyCode: (data: {
+    edits?: Record<string, string>;
+    target_files?: string[];
+    acceptance_command?: string;
+    fail_fast?: boolean;
+    workspace_path?: string;
+    session_id?: string;
+  }) =>
+    request<any>('/ide/verify', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  repairCode: (data: {
+    failure_stage: string;
+    raw_output: string;
+    exit_code?: number;
+    active_diff?: string;
+    iteration?: number;
+    target_files?: string[];
+    workspace_path?: string;
+    session_id?: string;
+  }) =>
+    request<any>('/ide/repair', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getIdeStatus: (workspace_path?: string, session_id?: string) => {
+    const params = new URLSearchParams();
+    if (workspace_path) params.set('workspace_path', workspace_path);
+    if (session_id) params.set('session_id', session_id);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return request<any>(`/ide/status${qs}`);
+  },
+
+  getRepositorySymbols: (query?: string, file_path?: string, workspace_path?: string) => {
+    const params = new URLSearchParams();
+    if (query) params.set('query', query);
+    if (file_path) params.set('file_path', file_path);
+    if (workspace_path) params.set('workspace_path', workspace_path);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return request<{ symbols: any[] }>(`/repository/symbols${qs}`);
+  },
+
+  getRepositoryImpact: (symbol_name: string, workspace_path?: string) => {
+    const params = new URLSearchParams();
+    params.set('symbol_name', symbol_name);
+    if (workspace_path) params.set('workspace_path', workspace_path);
+    return request<any>(`/repository/impact?${params.toString()}`);
+  },
+
+  getRepositoryArchitecture: (workspace_path?: string) => {
+    const qs = workspace_path ? `?workspace_path=${encodeURIComponent(workspace_path)}` : '';
+    return request<any>(`/repository/architecture${qs}`);
+  },
 };

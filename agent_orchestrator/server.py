@@ -1996,6 +1996,97 @@ async def preview_context(req: ContextPreviewRequest):
 
 
 # ---------------------------------------------------------------------------
+# Production IDE & Repository Intelligence Endpoints
+# ---------------------------------------------------------------------------
+
+class IDEVerifyRequest(BaseModel):
+    edits: Optional[Dict[str, str]] = None
+    target_files: Optional[List[str]] = None
+    acceptance_command: Optional[str] = None
+    fail_fast: bool = True
+    workspace_path: Optional[str] = None
+    session_id: Optional[str] = None
+
+
+class IDERepairRequest(BaseModel):
+    failure_stage: str
+    raw_output: str
+    exit_code: int = 1
+    active_diff: str = ""
+    iteration: int = 1
+    target_files: Optional[List[str]] = None
+    workspace_path: Optional[str] = None
+    session_id: Optional[str] = None
+
+
+def _get_ide_instance(workspace_path: Optional[str] = None, session_id: Optional[str] = None):
+    from ide.production_ide import ProductionIDE
+    ws = _get_workspace(workspace_path)
+    return ProductionIDE(workspace=ws)
+
+
+@app.post("/api/ide/verify")
+async def verify_code(req: IDEVerifyRequest):
+    """Executes the strict 6-stage IDE verification lifecycle on workspace code."""
+    ide = _get_ide_instance(req.workspace_path, req.session_id)
+    report = ide.verification_pipeline.run_lifecycle(
+        edits=req.edits,
+        target_files=req.target_files,
+        acceptance_command=req.acceptance_command,
+        fail_fast=req.fail_fast,
+    )
+    return report.to_dict()
+
+
+@app.post("/api/ide/repair")
+async def repair_code(req: IDERepairRequest):
+    """Executes closed-loop epistemic failure repair without log pollution."""
+    ide = _get_ide_instance(req.workspace_path, req.session_id)
+    repair_result = ide.repair_pipeline.handle_failure(
+        failure_stage=req.failure_stage,
+        raw_output=req.raw_output,
+        exit_code=req.exit_code,
+        active_diff=req.active_diff,
+        iteration=req.iteration,
+        target_files=req.target_files,
+    )
+    return repair_result.to_dict()
+
+
+@app.get("/api/ide/status")
+async def get_ide_status(workspace_path: Optional[str] = None, session_id: Optional[str] = None):
+    """Returns status metrics for the Production IDE."""
+    ide = _get_ide_instance(workspace_path, session_id)
+    return ide.get_status()
+
+
+@app.get("/api/repository/symbols")
+async def get_repository_symbols(query: Optional[str] = None, file_path: Optional[str] = None, workspace_path: Optional[str] = None):
+    """Queries code symbols across the repository."""
+    ide = _get_ide_instance(workspace_path)
+    if file_path:
+        return {"symbols": ide.repo_brain.get_file_symbols(file_path)}
+    elif query:
+        return {"symbols": ide.repo_brain.find_symbol(query)}
+    else:
+        return {"symbols": ide.repo_brain.get_all_symbols(limit=100)}
+
+
+@app.get("/api/repository/impact")
+async def get_impact_radius(symbol_name: str, workspace_path: Optional[str] = None):
+    """Calculates upstream blast radius for a given symbol."""
+    ide = _get_ide_instance(workspace_path)
+    return ide.repo_brain.get_impact_radius(symbol_name)
+
+
+@app.get("/api/repository/architecture")
+async def get_repository_architecture(workspace_path: Optional[str] = None):
+    """Returns detected architectural layers and components."""
+    ide = _get_ide_instance(workspace_path)
+    return ide.repo_brain.get_architecture_summary()
+
+
+# ---------------------------------------------------------------------------
 # Static frontend serving (if built)
 # ---------------------------------------------------------------------------
 

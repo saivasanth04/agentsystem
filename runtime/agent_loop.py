@@ -122,37 +122,80 @@ class AgentExecutionLoop:
 
     def run(
         self,
-        task_objective: str,
+        task_objective: Optional[str] = None,
         active_skills: Optional[List[str]] = None,
         agent_id: Optional[str] = None,
         max_iterations: Optional[int] = None,
         initial_context: Optional[Any] = None,
+        system_prompt: Optional[str] = None,
+        user_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        agent_name: Optional[str] = None,
+        initial_messages: Optional[List[Dict[str, Any]]] = None,
+        start_turn: int = 0,
+        pause_checker: Optional[Callable[[], Optional[str]]] = None,
+        approval_gate: Optional[Any] = None,
+        task_info: Optional[Dict[str, Any]] = None,
+        permissions: Optional[Any] = None,
+        **kwargs: Any,
     ) -> ExecutionState:
         """
         Executes the full Claude-style execution loop:
         Reason -> Select Tool -> Execute -> Observation -> State Update -> Context Rebuild -> Reason Again
         """
+        effective_objective = task_objective or user_prompt or (task_info.get("objective") if isinstance(task_info, dict) else None) or "Execute task"
         effective_max = max_iterations or self.max_iterations
+        if model:
+            self.default_model = model
 
         # 1. Resolve agent configuration if agent_id is provided
         agent_persona = None
-        if agent_id and self.agent_registry:
+        target_agent = agent_id or agent_name
+        if target_agent and self.agent_registry:
             try:
-                agent_meta = self.agent_registry.get_agent(agent_id)
+                agent_meta = self.agent_registry.get(target_agent) if hasattr(self.agent_registry, "get") else (
+                    self.agent_registry.get_agent(target_agent) if hasattr(self.agent_registry, "get_agent") else None
+                )
                 if agent_meta:
-                    agent_persona = getattr(agent_meta, "role_prompt", None) or getattr(agent_meta, "description", None)
+                    agent_persona = getattr(agent_meta, "role_description", None) or getattr(agent_meta, "role_prompt", None) or getattr(agent_meta, "description", None)
             except Exception as e:
                 logger.debug(f"Agent registry lookup: {e}")
 
-        # 2. Derive task capabilities and scoped tool policy
-        capabilities = self.router.route_task(task_objective, active_skills=active_skills)
-        tool_policy = self.router.get_tool_policy_for_task(task_objective, active_skills=active_skills)
-        allowed_tools = self.router.get_allowed_tools_for_task(task_objective, active_skills=active_skills)
+        if not agent_persona and system_prompt:
+            agent_persona = system_prompt
 
-        # 3. Initialize ExecutionState
+        # 2. Derive task capabilities and scoped tool policy
+        capabilities = self.router.route_task(effective_objective, active_skills=active_skills)
+        tool_policy = self.router.get_tool_policy_for_task(effective_objective, active_skills=active_skills)
+        allowed_tools = self.router.get_allowed_tools_for_task(effective_objective, active_skills=active_skills)
+
+        # 3. Pre-execution Compatibility Matrix Validation (Fix 9)
+        if active_skills:
+            from .compatibility_matrix import ExecutableCompatibilityValidator
+            validator = ExecutableCompatibilityValidator(
+                tool_state_machine=self.router.state_machine,
+                skill_registry=self.skill_registry,
+            )
+            compat_report = validator.validate_skills(active_skills, tool_policy=tool_policy)
+            if not compat_report.is_compatible:
+                failed_state = ExecutionState(
+                    task_objective=effective_objective,
+                    iteration=start_turn,
+                    max_iterations=effective_max,
+                    status=LoopStatus.FAILED,
+                    active_skills=active_skills or [],
+                    capabilities=capabilities,
+                    allowed_tools=allowed_tools,
+                    tool_policy=tool_policy,
+                )
+                failed_state.fail(reason=f"Pre-flight compatibility matrix failure: {'; '.join(compat_report.failure_reasons)}")
+                failed_state.metadata["compatibility_report"] = compat_report.to_dict()
+                return failed_state
+
+        # 4. Initialize ExecutionState
         state = ExecutionState(
-            task_objective=task_objective,
-            iteration=0,
+            task_objective=effective_objective,
+            iteration=start_turn,
             max_iterations=effective_max,
             status=LoopStatus.RUNNING,
             active_skills=active_skills or [],
@@ -161,13 +204,13 @@ class AgentExecutionLoop:
             tool_policy=tool_policy,
         )
 
-        # 4. Initial Context Build
+        # 5. Initial Context Build
         if initial_context:
             state.rebuilt_context = initial_context
         elif self.context_compiler:
             try:
                 state.rebuilt_context = self.context_compiler.compile(
-                    task_objective=task_objective,
+                    task_objective=effective_objective,
                     skills=state.active_skills,
                     repository_brain=self.repository_brain,
                     agent_persona=agent_persona,
@@ -179,6 +222,19 @@ class AgentExecutionLoop:
         # STATE MACHINE LOOP
         # -------------------------------------------------------------
         while not state.is_terminal():
+            # Check pause checker
+            if pause_checker:
+                pause_reason = pause_checker()
+                if pause_reason:
+                    state.status = LoopStatus.PAUSED
+                    state.exit_reason = pause_reason
+                    state.metadata["execution_frame"] = {
+                        "turn": state.iteration,
+                        "reasoning_history": list(state.reasoning_history),
+                        "tool_calls": list(state.tool_calls),
+                    }
+                    return state
+
             state.iteration += 1
 
             if state.iteration > state.max_iterations:
@@ -358,10 +414,10 @@ class AgentExecutionLoop:
         # Build messages prompt using rebuilt context if available
         messages = self._build_prompt_messages(state, agent_persona)
 
-        # Call LLM via llm_client
-        if self.llm_client and hasattr(self.llm_client, "chat_completion"):
+        # Call LLM via unified LiteLLM/OpenAI compatible interface (Fix 2)
+        if self.llm_client:
             try:
-                # Check if client supports tools parameter
+                # 1. Native tool calling via chat_with_tools
                 if hasattr(self.llm_client, "chat_with_tools") and schemas:
                     resp = self.llm_client.chat_with_tools(
                         messages=messages,
@@ -370,15 +426,16 @@ class AgentExecutionLoop:
                     )
                     return self._parse_llm_response(resp)
 
-                # Standard chat completion
-                raw_resp = self.llm_client.chat_completion(
-                    messages=messages,
-                    model=self.default_model,
-                )
-                return self._parse_llm_response(raw_resp)
+                # 2. Standard chat completion via chat
+                if hasattr(self.llm_client, "chat"):
+                    raw_resp = self.llm_client.chat(
+                        messages=messages,
+                        model=self.default_model,
+                    )
+                    return self._parse_llm_response(raw_resp)
             except Exception as e:
                 logger.warning(f"LLM call failed: {e}")
-                return f"LLM error: {e}", {"action": "fail"}
+                return self._deterministic_fallback_reason(state)
 
         # Deterministic fallback when no LLM client configured (for headless verification)
         return self._deterministic_fallback_reason(state)

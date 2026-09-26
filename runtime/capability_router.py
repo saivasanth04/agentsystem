@@ -2,6 +2,7 @@
 Capability Router.
 Directs tasks into granular capability requirements, restricts tools to active task demands,
 and bridges existing Phase 1 tools and Browser MCP adapters without creating duplicate tools.
+Enforces the Tool State Machine: Only EXECUTABLE tools are exposed to the model.
 """
 from dataclasses import dataclass, field
 import json
@@ -11,19 +12,22 @@ import re
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from .tool_policy import CAPABILITY_TO_TOOLS, DEFAULT_TOOL_ALIASES, ToolPolicy
+from .tool_state_machine import ToolStateMachine, ToolLifecycleState
 
 logger = logging.getLogger("runtime.capability_router")
 
 
 class BrowserMCPAdapter:
     """
-    Thin protocol adapter for browser devtools operations.
-    Conforms strictly to the integration rule:
-    'If browser MCP exists: Reuse. Otherwise create only an MCP adapter.
-     Never build a browser automation framework yourself.'
+    Protocol adapter for browser devtools operations.
+    Conforms strictly to the Non-Negotiable Contract:
+    - Never build a custom browser automation framework.
+    - If browser MCP is connected (chrome-devtools/puppeteer), dispatch real calls.
+    - If browser MCP is unavailable, tool state is MISSING; NEVER fabricate logs, DOM, or screenshots.
     """
 
-    def __init__(self, server_name: str = "mcp-server-browser"):
+    def __init__(self, mcp_manager: Optional[Any] = None, server_name: str = "chrome-devtools"):
+        self.mcp_manager = mcp_manager
         self.server_name = server_name
         self.tools = [
             {
@@ -72,18 +76,42 @@ class BrowserMCPAdapter:
             }
         ]
 
+    def is_available(self) -> bool:
+        """Checks if a real browser MCP server is active."""
+        if not self.mcp_manager:
+            return False
+        try:
+            servers = self.mcp_manager.list_servers() if hasattr(self.mcp_manager, "list_servers") else []
+            browser_servers = {"chrome-devtools", "puppeteer", "browser", "playwright"}
+            return any(s.lower() in browser_servers for s in servers)
+        except Exception:
+            return False
+
     def call_tool(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Dispatches browser operation via Chrome DevTools protocol adapter representation."""
-        clean = name.replace("browser.", "").replace("browser_", "")
-        logger.info(f"BrowserMCPAdapter handling '{name}' with arguments: {arguments}")
-        return {
-            "operation": f"browser.{clean}",
-            "status": "ready",
-            "protocol": "ChromeDevTools-MCP",
-            "arguments": arguments,
-            "result": [],
-            "success": True,
-        }
+        """Dispatches browser operation to real MCP server or reports MISSING."""
+        if not self.is_available():
+            logger.warning(f"Browser operation '{name}' rejected: browser MCP server is not connected.")
+            return {
+                "success": False,
+                "status": "MISSING",
+                "tool": name,
+                "error": (
+                    f"Browser tool '{name}' is unavailable because no browser MCP server "
+                    "(chrome-devtools or puppeteer) is currently connected. "
+                    "Simulated or fabricated browser execution is strictly prohibited."
+                ),
+            }
+
+        # Dispatch to real MCP server via mcp_manager
+        try:
+            return self.mcp_manager.call_tool(name, arguments)
+        except Exception as e:
+            return {
+                "success": False,
+                "status": "ERROR",
+                "tool": name,
+                "error": f"Real browser MCP call failed: {e}",
+            }
 
     def get_tool_definitions(self) -> List[Dict[str, Any]]:
         return list(self.tools)
@@ -92,7 +120,7 @@ class BrowserMCPAdapter:
 class CapabilityRouter:
     """
     Coordinates capability routing:
-    Task ──> Capabilities ──> Skill Runtime ──> Allowed Tools ──> LLM
+    Task ──> Capabilities ──> Skill Runtime ──> Allowed Tools (State Machine: EXECUTABLE only) ──> LLM
     """
 
     def __init__(
@@ -131,7 +159,13 @@ class CapabilityRouter:
             except Exception as e:
                 logger.debug(f"MCPManager default initialization deferred: {e}")
 
-        # Load Phase 1 Tool Inventory
+        # Authoritative Tool State Machine
+        self.state_machine = ToolStateMachine(
+            dispatcher=self.dispatcher,
+            mcp_manager=self.mcp_manager,
+        )
+
+        # Load Phase 1 Tool Inventory for declaration
         self.inventory_path = Path(inventory_path) if inventory_path else (
             Path(__file__).resolve().parents[1] / "tool_audit" / "tool_inventory.json"
         )
@@ -139,12 +173,12 @@ class CapabilityRouter:
         self.inventory_by_name: Dict[str, Dict[str, Any]] = {}
         self._load_inventory()
 
-        # Browser tools check and adapter setup
-        self.browser_adapter: Optional[BrowserMCPAdapter] = None
+        # Browser tools adapter
+        self.browser_adapter = BrowserMCPAdapter(mcp_manager=self.mcp_manager)
         self._init_browser_tools()
 
     def _load_inventory(self):
-        """Loads and indexes the Phase 1 tool inventory."""
+        """Loads and indexes the Phase 1 tool inventory and declares in state machine."""
         if self.inventory_path.exists():
             try:
                 with open(self.inventory_path, "r", encoding="utf-8") as f:
@@ -155,44 +189,41 @@ class CapabilityRouter:
                             name = item.get("name")
                             if name:
                                 self.inventory_by_name[name] = item
-                logger.info(f"Loaded {len(self.tool_inventory)} tools from {self.inventory_path}")
+                                self.state_machine.declare_tool(
+                                    name=name,
+                                    schema=item,
+                                    source=item.get("source", "builtin"),
+                                    server_name=item.get("server_name"),
+                                )
+                logger.info(f"Loaded {len(self.tool_inventory)} tools into state machine from {self.inventory_path}")
             except Exception as e:
                 logger.warning(f"Failed to load tool inventory from {self.inventory_path}: {e}")
 
     def _init_browser_tools(self):
-        """
-        Adheres to rule:
-        If browser MCP exists: Reuse. Otherwise create only an MCP adapter.
-        Never build a browser automation framework yourself.
-        """
-        browser_mcp_exists = False
-        if self.mcp_manager and hasattr(self.mcp_manager, "discover_servers"):
-            for s in self.mcp_manager.discover_servers():
-                s_name = s.get("server_name", "").lower()
-                if "browser" in s_name or "devtools" in s_name or "chrome" in s_name:
-                    browser_mcp_exists = True
-                    break
-
-        if not browser_mcp_exists:
-            # Mount lightweight MCP adapter without custom automation frameworks
-            self.browser_adapter = BrowserMCPAdapter()
+        """Mounts real browser tools into dispatcher if browser MCP exists, else registers explicit stub."""
+        for tool_def in self.browser_adapter.get_tool_definitions():
+            t_name = tool_def["name"]
+            self.state_machine.declare_tool(
+                name=t_name,
+                schema=tool_def,
+                source="mcp",
+                server_name="chrome-devtools",
+                capabilities=["browser.inspect"],
+            )
             if self.dispatcher and hasattr(self.dispatcher, "register"):
-                for tool_def in self.browser_adapter.get_tool_definitions():
-                    t_name = tool_def["name"]
-                    # Register into dispatcher without duplicating tools
-                    def _make_handler(name=t_name):
-                        return lambda **kwargs: self.browser_adapter.call_tool(name, kwargs)
+                def _make_handler(name=t_name):
+                    return lambda **kwargs: self.browser_adapter.call_tool(name, kwargs)
 
-                    try:
-                        self.dispatcher.register(
-                            name=t_name,
-                            description=tool_def["description"],
-                            parameters=tool_def["parameters"],
-                            handler=_make_handler(t_name),
-                            category="browser",
-                        )
-                    except Exception as e:
-                        logger.debug(f"Dispatcher registration for browser tool {t_name}: {e}")
+                try:
+                    self.dispatcher.register(
+                        name=t_name,
+                        description=tool_def["description"],
+                        parameters=tool_def["parameters"],
+                        handler=_make_handler(t_name),
+                        category="browser",
+                    )
+                except Exception as e:
+                    logger.debug(f"Dispatcher registration for browser tool {t_name}: {e}")
 
     def route_task(
         self,
@@ -213,10 +244,8 @@ class CapabilityRouter:
                 manifest = self.skill_registry.get_skill(s_name)
                 if manifest and hasattr(manifest, "required_tools"):
                     for req in manifest.required_tools:
-                        # Map required tool to capability
                         req_norm = req.strip()
                         if req_norm in DEFAULT_TOOL_ALIASES:
-                            # e.g. 'filesystem.read' -> capability 'filesystem.read'
                             cap_prefix = req_norm.split(".")[0]
                             capabilities.add(f"{cap_prefix}.read" if "read" in req_norm else req_norm)
                         for cap, tools in CAPABILITY_TO_TOOLS.items():
@@ -224,37 +253,30 @@ class CapabilityRouter:
                                 capabilities.add(cap)
 
         # 2. Heuristic capability classification based on task objective
-        # Browser / UI / DevTools
         if any(w in clean_task for w in ["browser", "ui", "devtools", "dom", "css", "html", "inspect page"]):
             capabilities.add("browser.inspect")
 
-        # Tests / Execution
         if any(w in clean_task for w in ["test", "pytest", "run test", "verify", "execute", "benchmark"]):
             capabilities.add("terminal.run")
             capabilities.add("verification.test")
 
-        # Filesystem write / Edit / Refactor
         if any(w in clean_task for w in ["write", "edit", "create", "modify", "refactor", "patch", "fix", "update"]):
             capabilities.add("filesystem.read")
             capabilities.add("filesystem.write")
 
-        # Filesystem read / Inspect / Analyze
         if any(w in clean_task for w in ["read", "inspect", "search", "find", "check", "scan", "analyze"]):
             capabilities.add("filesystem.read")
             capabilities.add("codebase.search")
 
-        # Git operations
         if any(w in clean_task for w in ["git", "commit", "branch", "checkout", "diff", "repo", "stash"]):
             capabilities.add("git.inspect")
             if any(w in clean_task for w in ["commit", "branch", "checkout", "push", "restore"]):
                 capabilities.add("git.mutate")
 
-        # Memory operations
         if any(w in clean_task for w in ["remember", "store", "memory", "recall"]):
             capabilities.add("memory.read")
             capabilities.add("memory.write")
 
-        # Default fallback: safe baseline read capability
         if not capabilities:
             capabilities.add("filesystem.read")
             capabilities.add("codebase.search")
@@ -276,9 +298,17 @@ class CapabilityRouter:
         task_description: str,
         active_skills: Optional[List[str]] = None,
     ) -> List[str]:
-        """Returns concrete tool names allowed for this task based on required capabilities."""
+        """Returns tool names that are BOTH authorized by policy AND verified EXECUTABLE."""
         policy = self.get_tool_policy_for_task(task_description, active_skills=active_skills)
-        return sorted(list(policy.allowed_tools))
+        candidate_tools = sorted(list(policy.allowed_tools))
+
+        # Enforce State Machine: filter out missing, unhealthy, or inventory-only tools
+        executable_records = self.state_machine.get_executable_tools(
+            candidate_tool_names=candidate_tools,
+            tool_policy=policy,
+            active_capabilities=policy.capabilities,
+        )
+        return sorted([r.name for r in executable_records])
 
     def get_tool_schemas_for_task(
         self,
@@ -287,47 +317,28 @@ class CapabilityRouter:
     ) -> List[Dict[str, Any]]:
         """
         Returns LiteLLM Gateway / OpenAI function calling schemas
-        filtered strictly to tools permitted by the task capabilities.
-        Eliminates irrelevant tool prompt bloating.
+        filtered strictly to tools that are AUTHORIZED and EXECUTABLE.
+        Never exposes inventory-only or missing tools.
         """
         policy = self.get_tool_policy_for_task(task_description, active_skills=active_skills)
-        allowed_tools = policy.allowed_tools
+        allowed_executable_tools = set(self.get_allowed_tools_for_task(task_description, active_skills=active_skills))
 
         filtered_schemas: List[Dict[str, Any]] = []
         seen: Set[str] = set()
 
-        # 1. Fetch from UnifiedToolDispatcher if available
+        # Fetch from UnifiedToolDispatcher for verified executable tools
         if self.dispatcher and hasattr(self.dispatcher, "get_schemas"):
             for s in self.dispatcher.get_schemas():
                 fn_name = s.get("function", {}).get("name") or s.get("name")
-                if fn_name and policy.is_tool_allowed(fn_name) and fn_name not in seen:
+                if fn_name and fn_name in allowed_executable_tools and fn_name not in seen:
                     seen.add(fn_name)
                     filtered_schemas.append(s)
 
-        # 2. Augment from Phase 1 inventory if not yet registered in dispatcher
-        for tool_name in allowed_tools:
-            if tool_name not in seen and tool_name in self.inventory_by_name:
-                item = self.inventory_by_name[tool_name]
-                schema = {
-                    "type": "function",
-                    "function": {
-                        "name": item.get("name", tool_name),
-                        "description": item.get("description", ""),
-                        "parameters": {
-                            "type": "object",
-                            "properties": item.get("parameters", {}),
-                            "required": item.get("required_parameters", []),
-                        },
-                    },
-                }
-                seen.add(tool_name)
-                filtered_schemas.append(schema)
-
-        # 3. Add browser tools from adapter if browser capability was routed
-        if "browser.inspect" in policy.capabilities and self.browser_adapter:
+        # Check browser tools only if browser MCP is actively available
+        if "browser.inspect" in policy.capabilities and self.browser_adapter.is_available():
             for b_tool in self.browser_adapter.get_tool_definitions():
                 b_name = b_tool["name"]
-                if b_name not in seen:
+                if b_name in allowed_executable_tools and b_name not in seen:
                     seen.add(b_name)
                     filtered_schemas.append({
                         "type": "function",
