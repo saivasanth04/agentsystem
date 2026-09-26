@@ -382,15 +382,9 @@ class AgentExecutionLoop:
                     )
                     return self._parse_llm_response(resp)
 
-                # 2. Standard chat completion
+                # 2. Standard chat completion (PARTIAL FIX 2: chat_completion removed)
                 if hasattr(self.llm_client, "chat"):
                     raw_resp = self.llm_client.chat(
-                        messages=messages,
-                        model=self.default_model,
-                    )
-                    return self._parse_llm_response(raw_resp)
-                elif hasattr(self.llm_client, "chat_completion"):
-                    raw_resp = self.llm_client.chat_completion(
                         messages=messages,
                         model=self.default_model,
                     )

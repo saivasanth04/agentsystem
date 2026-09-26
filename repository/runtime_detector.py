@@ -86,7 +86,13 @@ class RuntimeDetector:
                 logger.debug(f"Error reading requirements.txt: {e}")
 
         if pyproject.exists():
-            pkg_manager = "poetry" if "tool.poetry" in pyproject.read_text(encoding="utf-8", errors="replace") else "pip/uv"
+            try:
+                pyproj_content = pyproject.read_text(encoding="utf-8", errors="replace")
+                pkg_manager = "poetry" if "tool.poetry" in pyproj_content else "pip/uv"
+                if "tool.pytest" in pyproj_content or "pytest" in pyproj_content:
+                    test_framework = "pytest"
+            except Exception:
+                pass
 
         # 2. Inspect Node.js / TypeScript environment
         pkg_json = self.root_dir / "package.json"
@@ -122,6 +128,31 @@ class RuntimeDetector:
                 )
             except Exception as e:
                 logger.debug(f"Error reading package.json: {e}")
+
+        # 3. Inspect Java / Kotlin environment (Maven / Gradle / Spring Boot)
+        pom_xml = self.root_dir / "pom.xml"
+        build_gradle = self.root_dir / "build.gradle"
+        build_gradle_kts = self.root_dir / "build.gradle.kts"
+
+        if pom_xml.exists() or build_gradle.exists() or build_gradle_kts.exists():
+            if not req_txt.exists() and not target_pkg:
+                primary_lang = "java"
+            pkg_manager = "maven" if pom_xml.exists() else "gradle"
+            test_framework = "junit"
+            if pom_xml.exists():
+                try:
+                    content = pom_xml.read_text(encoding="utf-8", errors="replace")
+                    if "spring-boot" in content or "org.springframework" in content:
+                        framework = "spring_boot"
+                except Exception:
+                    pass
+            elif build_gradle.exists():
+                try:
+                    content = build_gradle.read_text(encoding="utf-8", errors="replace")
+                    if "spring-boot" in content or "org.springframework" in content:
+                        framework = "spring_boot"
+                except Exception:
+                    pass
 
         # Check monorepo structure
         subdirs = [p for p in self.root_dir.iterdir() if p.is_dir() and not p.name.startswith(".")]

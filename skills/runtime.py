@@ -20,6 +20,8 @@ from agent_orchestrator.llm import LLMClient
 
 from .compiler import ExecutionStep, SkillCompiler
 from .policy import RuntimePolicy, ToolPolicy
+from .runtime_policy import ContextRequirements, VerificationRequirements
+from .capability_summary import CapabilitySummaryExtractor, MinimalCapabilitySummary
 from .resolver import ResolvedSkillPlan, SkillResolver
 from .verifier import SkillVerifier
 
@@ -278,6 +280,78 @@ class SkillRuntime:
         )
         self.on_event("SKILL_RUNTIME_COMPLETE", f"Execution complete: {overall_status} in {total_dur}s")
         return report
+
+    def execute(
+        self,
+        task: Optional[Union[str, Any]] = None,
+        capabilities: Optional[List[str]] = None,
+        preferred_skills: Optional[List[str]] = None,
+        task_context: Optional[Dict[str, Any]] = None,
+        agent: Optional[Any] = None,
+        agent_role: Optional[str] = None,
+        execution_loop: Optional[Any] = None,
+        run_procedure_directly: bool = False,
+        **kwargs: Any,
+    ) -> Any:
+        """
+        Authoritative Skill Execution entry point:
+        Task -> SkillResolver.resolve() -> ResolvedSkillPlan -> SkillRuntime.execute() -> RuntimePolicy -> AgentExecutionLoop
+        """
+        task_input = task if task is not None else (kwargs.get("task_objective") or kwargs.get("objective") or kwargs.get("task_description") or "")
+        task_desc = getattr(task_input, "objective", None) or (task_input.get("objective") if isinstance(task_input, dict) else None) or str(task_input)
+        caps = capabilities or (getattr(task_input, "required_capabilities", None) if hasattr(task_input, "required_capabilities") else None) or (task_input.get("required_capabilities") if isinstance(task_input, dict) else None) or []
+        preferred = preferred_skills or (getattr(task_input, "preferred_skills", None) if hasattr(task_input, "preferred_skills") else None) or (task_input.get("preferred_skills") if isinstance(task_input, dict) else None) or []
+
+        # 1. Resolve skill plan
+        plan = self.resolver.resolve(
+            task_description=task_desc,
+            capabilities=caps,
+            preferred_skills=preferred,
+        )
+
+        # 2. Extract minimal capability summary (strictly no raw SKILL.md prompt bleed)
+        minimal_summaries = [CapabilitySummaryExtractor.extract(s) for s in plan.skills]
+
+        # 3. Derive runtime policy and tool policy
+        runtime_policy = plan.composite_runtime_policy
+        tool_policy = plan.composite_tool_policy
+
+        eff_role = agent_role or (getattr(agent, "name", None) if agent else None) or runtime_policy.agent_affinity or "CODER"
+
+        # 4. If direct procedural plan execution requested
+        if run_procedure_directly:
+            return self.execute_plan(plan, task_context=task_context, agent_role=eff_role)
+
+        # 5. Authoritative dispatch to AgentExecutionLoop
+        loop = execution_loop
+        if loop is None and agent is not None and hasattr(agent, "execution_loop"):
+            loop = agent.execution_loop
+        if loop is None:
+            from runtime.agent_loop import AgentExecutionLoop
+            loop = AgentExecutionLoop(
+                llm_client=self.llm,
+                tool_dispatcher=self.dispatcher,
+                workspace_manager=self.workspace,
+                skill_registry=self.skill_registry,
+                agent_registry=self.agent_registry,
+                mcp_manager=self.mcp_manager,
+            )
+
+        # Prepare context and minimal capabilities for AgentExecutionLoop
+        active_skill_names = [s.name for s in plan.skills]
+        run_kwargs = {
+            k: v for k, v in kwargs.items()
+            if k not in ("task_objective", "objective", "task_description")
+        }
+        return loop.run(
+            task_objective=task_desc,
+            active_skills=active_skill_names,
+            agent_id=eff_role,
+            available_tools=list(tool_policy.allowed_tools),
+            minimal_capabilities=minimal_summaries,
+            task_info=task_context,
+            **run_kwargs,
+        )
 
     def create_langgraph_node(self) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
         """

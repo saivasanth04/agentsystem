@@ -212,6 +212,12 @@ class IDEVerificationPipeline:
             logger.debug(f"Git diff extraction error: {e}")
             return ""
 
+    def verify_task(self, task: Any) -> VerificationResult:
+        """
+        Authoritative task verification delegating to the unified VerificationGate.
+        """
+        return self.verification_gate.verify_task(task)
+
     def stage_edit(
         self,
         edits: Optional[Dict[str, str]] = None,

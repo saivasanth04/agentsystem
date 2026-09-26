@@ -69,6 +69,9 @@ class ProductionIDE:
         repository_brain: Optional[RepositoryBrain] = None,
         task_orchestrator: Optional[Any] = None,
         execution_loop: Optional[AgentExecutionLoop] = None,
+        verification_pipeline: Optional[IDEVerificationPipeline] = None,
+        repair_pipeline: Optional[IDERepairPipeline] = None,
+        project_runtime_manager: Optional[Any] = None,
     ):
         # 1. Workspace
         self.workspace = workspace or WorkspaceManager()
@@ -115,8 +118,8 @@ class ProductionIDE:
         )
         self.replanner = EpistemicReplanner()
 
-        # 6. Verification Pipeline
-        self.verification_pipeline = IDEVerificationPipeline(
+        # 6. Verification Pipeline (Consumed or constructed)
+        self.verification_pipeline = verification_pipeline or IDEVerificationPipeline(
             workspace=self.workspace,
             tester_agent=self.tester_agent,
             reviewer_agent=self.reviewer_agent,
@@ -125,8 +128,8 @@ class ProductionIDE:
             llm_client=self.llm,
         )
 
-        # 7. Failure Repair Pipeline
-        self.repair_pipeline = IDERepairPipeline(
+        # 7. Failure Repair Pipeline (Consumed or constructed)
+        self.repair_pipeline = repair_pipeline or IDERepairPipeline(
             workspace=self.workspace,
             repository_brain=self.repo_brain,
             context_compiler=self.context_compiler,
@@ -142,6 +145,20 @@ class ProductionIDE:
             workspace_manager=self.workspace,
             tool_dispatcher=self.dispatcher,
         )
+
+        # 9. Project Runtime Manager (Service Layer Process & Port Governance - PARTIAL FIX 3)
+        if project_runtime_manager is not None:
+            self.runtime_manager = project_runtime_manager
+        else:
+            try:
+                from agent_orchestrator.runtime.project_runtime import ProjectRuntimeManager
+                self.runtime_manager = ProjectRuntimeManager(
+                    workspace_dir=self.workspace_root,
+                )
+            except Exception as e:
+                logger.debug(f"ProjectRuntimeManager initialization fallback: {e}")
+                self.runtime_manager = None
+        self.project_runtime_manager = self.runtime_manager
 
     def edit(
         self,
@@ -255,6 +272,7 @@ class ProductionIDE:
             "mcp_servers": self.mcp_manager.list_servers() if hasattr(self.mcp_manager, "list_servers") else [],
             "orchestrator_available": True,
             "execution_loop_available": True,
+            "project_runtime_available": self.runtime_manager is not None,
         }
 
     def create_langgraph_node(self) -> Callable[[Dict[str, Any]], Dict[str, Any]]:

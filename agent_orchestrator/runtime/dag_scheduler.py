@@ -192,12 +192,28 @@ class ConcurrentDAGScheduler:
                 except Exception:
                     pass
 
-            # 2. Ingest JIT Skills
-            skill_query = f"{step_name} {' '.join(req_caps)} {' '.join(pref_skills)} {user_request}"
-            discovered_skills = orchestrator.skill_registry.discover(query=skill_query, top_k=3)
-            active_skills = list(dict.fromkeys(pref_skills + [m.name for m, _ in discovered_skills]))[:5]
-            if active_skills:
-                self.on_event("DYNAMIC SKILLS", f"Injected JIT skills for [{agent.name}] on Task [{task_id}]: {active_skills}")
+            # 2. Ingest Skills via Authoritative SkillResolver (CRITICAL FIX 1)
+            from skills.resolver import SkillResolver
+            from skills.runtime import SkillRuntime
+            skill_runtime = getattr(orchestrator, "skill_runtime", None)
+            if skill_runtime is None:
+                skill_runtime = SkillRuntime(
+                    skill_registry=getattr(orchestrator, "skill_registry", None),
+                    agent_registry=getattr(orchestrator, "agent_registry", None),
+                    mcp_manager=getattr(orchestrator, "mcp_manager", None),
+                    workspace_manager=orchestrator.workspace,
+                    llm_client=orchestrator.llm,
+                )
+                orchestrator.skill_runtime = skill_runtime
+
+            resolved_plan = skill_runtime.resolver.resolve(
+                task_description=f"{step_name} {user_request}",
+                capabilities=req_caps,
+                preferred_skills=pref_skills,
+            )
+            resolved_skill_names = [s.name for s in resolved_plan.skills]
+            if resolved_skill_names:
+                self.on_event("DYNAMIC SKILLS", f"Resolved Skill Plan for [{agent.name}] on Task [{task_id}]: {resolved_skill_names}")
 
             # Dependency-Scoped Artifact Routing & MessageBus Inboxes
             parent_artifacts = task_dag.get_parent_artifacts(task_id)
@@ -300,25 +316,21 @@ class ConcurrentDAGScheduler:
                             span_type=SpanType.AGENT,
                             attributes={"agent_name": agent.name, "task_id": task_id, "model": routed_model},
                         ) as agent_span:
-                            res = agent.execute(
-                                ostate,
-                                active_skills=active_skills,
-                                task_info=task_context,
-                                permissions=task.permissions,
-                                max_turns=task.max_turns,
-                                timeout_seconds=task.timeout_seconds,
-                                session_id=session_id,
-                                task_id=task_id,
-                                state_store=getattr(orchestrator, "state_store", None),
-                                checkpoint_manager=getattr(orchestrator, "checkpoint_manager", None),
-                                workspace=sandbox,
-                                approval_gate=getattr(orchestrator, "approval_gate", None),
+                            # 3. Execute via Authoritative SkillRuntime (CRITICAL FIX 1)
+                            res = skill_runtime.execute(
+                                task=task,
+                                capabilities=req_caps,
+                                preferred_skills=pref_skills,
+                                task_context=task_context,
+                                agent=agent,
+                                agent_role=agent.name,
                                 model=routed_model,
                                 event_bus=self.event_bus,
                                 telemetry_engine=self.telemetry_engine,
-                                agent_contract=derived_contract,
                                 cancellation_token=getattr(orchestrator, "cancellation_token", None) if hasattr(getattr(orchestrator, "cancellation_token", None), "is_cancelled") and not hasattr(getattr(orchestrator, "cancellation_token", None), "_mock_methods") else None,
                             )
+                            if hasattr(res, "to_dict"):
+                                res = res.to_dict()
                             if exec_error or (isinstance(res, dict) and res.get("success") is False):
                                 agent_span.set_status(SpanStatus.ERROR, exec_error or str(res.get("error")))
                     except Exception as e:
@@ -337,37 +349,21 @@ class ConcurrentDAGScheduler:
                 completed_at_str = datetime.now().isoformat()
 
                 task_dag.mark_task_verifying(task_id)
-                v_res = orchestrator.verification_gate.verify_task(task)
-
-                # Self-healing for missing dependencies (Issue #64)
-                if not v_res.passed:
-                    combined_err = " ".join(v_res.failure_reasons) + " " + str(exec_error or "")
-                    try:
-                        from .dependency_healer import DependencyHealingEngine
-                        missing_dep = DependencyHealingEngine.identify_missing_dependency(stderr=combined_err, stdout=v_res.stdout)
-                        if missing_dep:
-                            self.on_event("DEPENDENCY HEALING", f"Missing dependency detected for Task [{task_id}]: {missing_dep.module_name} (package: {missing_dep.package_name}). Attempting auto-installation...")
-                            pkg_mgr = "pip"
-                            prof = getattr(orchestrator, "project_profile", None)
-                            if prof and isinstance(prof, dict):
-                                pkg_mgr = prof.get("package_manager", "pip")
-                            heal_res = DependencyHealingEngine.heal_and_retry(
-                                failed_command="",
-                                stderr=combined_err,
-                                sandbox=sandbox,
-                                stdout=v_res.stdout,
-                                package_manager=pkg_mgr,
-                                auto_approve=True,
-                            )
-                            if heal_res.installed:
-                                self.on_event("DEPENDENCY HEALING", f"Successfully installed '{missing_dep.package_name}'. Re-verifying task [{task_id}]...")
-                                v_res = orchestrator.verification_gate.verify_task(task)
-                    except Exception as e:
-                        self.on_event("DEPENDENCY HEALING ERROR", f"Notice: Dependency healing error: {e}")
+                # Delegate verification strictly to VerificationPipeline (PARTIAL FIX 4)
+                verification_pipeline = getattr(orchestrator, "verification_pipeline", None)
+                if verification_pipeline is None:
+                    from ide.verification_pipeline import IDEVerificationPipeline
+                    verification_pipeline = IDEVerificationPipeline(
+                        workspace=sandbox,
+                        tool_dispatcher=getattr(orchestrator, "tool_dispatcher", None),
+                        llm_client=orchestrator.llm,
+                    )
+                    orchestrator.verification_pipeline = verification_pipeline
+                v_res = verification_pipeline.verify_task(task)
 
                 # Extract telemetry metrics
                 attempt_tools: List[str] = []
-                attempt_skills = list(active_skills)
+                attempt_skills = list(resolved_skill_names)
                 attempt_observations: List[ObservationRecord] = []
                 attempt_errors: List[str] = []
                 attempt_token_usage = TokenUsage()

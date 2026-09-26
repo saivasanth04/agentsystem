@@ -196,6 +196,7 @@ class CapabilityRouter:
         self.tool_state_machine = ToolStateMachine(
             dispatcher=self.dispatcher,
             mcp_manager=self.mcp_manager,
+            browser_adapter=self.browser_adapter,
         )
         self.tool_sm = self.tool_state_machine
 
@@ -368,6 +369,7 @@ class CapabilityRouter:
 
         # 3. Handle browser tools: declare them; mark EXECUTABLE only if real browser MCP running
         if "browser.inspect" in policy.capabilities and self.browser_adapter:
+            self.tool_state_machine.browser_adapter = self.browser_adapter
             for b_tool in self.browser_adapter.get_tool_definitions():
                 b_name = b_tool["name"]
                 if b_name not in self.tool_state_machine._tools:
@@ -379,9 +381,9 @@ class CapabilityRouter:
                     )
                 if self.browser_adapter.is_available():
                     self.tool_state_machine.transition(b_name, ToolLifecycleState.DISCOVERED)
-                    self.tool_state_machine.transition(b_name, ToolLifecycleState.HEALTHY)
-                    self.tool_state_machine.transition(b_name, ToolLifecycleState.AUTHORIZED)
-                    self.tool_state_machine.transition(b_name, ToolLifecycleState.EXECUTABLE)
+                    if self.tool_state_machine.verify_health(b_name):
+                        self.tool_state_machine.transition(b_name, ToolLifecycleState.AUTHORIZED)
+                        self.tool_state_machine.transition(b_name, ToolLifecycleState.EXECUTABLE)
                 else:
                     self.tool_state_machine.transition(b_name, ToolLifecycleState.MISSING, error_reason="No real Chrome DevTools or Puppeteer MCP server connected")
 

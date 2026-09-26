@@ -28,6 +28,8 @@ from .dedup import ContextDeduplicator
 from .pack import ConversationSlicer, OptimizedContextPackage, RepositorySlicer, SkillSectionSlicer
 from .ranking import ContextRanker
 
+CompiledContextPackage = OptimizedContextPackage
+
 logger = logging.getLogger("context.compiler")
 
 
@@ -50,12 +52,22 @@ class ContextCompiler:
         tool_dispatcher: Optional[Any] = None,
         workspace_manager: Optional[Any] = None,
         llm_client: Optional[Any] = None,
+        repository_brain: Optional[Any] = None,
     ):
         self.budget_mgr = ContextBudgetManager(
             total_budget=total_budget,
             distribution=distribution,
             model_name=model_name,
         )
+        self.ranker = ContextRanker(diversity_lambda=diversity_lambda)
+        self.deduplicator = ContextDeduplicator(default_threshold=dedup_threshold)
+        self.skill_registry = skill_registry
+        self.agent_registry = agent_registry
+        self.mcp_manager = mcp_manager
+        self.tool_dispatcher = tool_dispatcher
+        self.workspace_manager = workspace_manager
+        self.llm_client = llm_client
+        self.repository_brain = repository_brain
         self.ranker = ContextRanker(diversity_lambda=diversity_lambda)
         self.deduplicator = ContextDeduplicator(default_threshold=dedup_threshold)
         self.conv_slicer = ConversationSlicer(self.budget_mgr.counter)
@@ -106,7 +118,7 @@ class ContextCompiler:
 
     def compile(
         self,
-        task_objective: str,
+        task_objective: Optional[str] = None,
         verification_state: Optional[Union[Dict[str, Any], Any]] = None,
         errors: Optional[List[str]] = None,
         diff: Optional[str] = None,
@@ -115,6 +127,7 @@ class ContextCompiler:
         working_memory: Optional[Any] = None,
         conversation: Optional[List[Dict[str, Any]]] = None,
         agent_persona: Optional[str] = None,
+        **kwargs: Any,
     ) -> OptimizedContextPackage:
         """
         Executes the 7-stream optimization pipeline:
@@ -126,7 +139,7 @@ class ContextCompiler:
         6. Enforces exact token budgets via tiktoken.
         7. Packs into OptimizedContextPackage.
         """
-        clean_objective = (task_objective or "").strip()
+        clean_objective = (task_objective or kwargs.get("objective") or kwargs.get("user_request") or "").strip()
 
         # -------------------------------------------------------------
         # STREAM 1: Task Objective
@@ -176,7 +189,8 @@ class ContextCompiler:
         # STREAM 5: Repository Brain (Targeted slices only - Never entire repo)
         # -------------------------------------------------------------
         repo_sec = ""
-        if repository_brain:
+        repo_target = repository_brain or getattr(self, "repository_brain", None)
+        if repo_target:
             relevant_symbols = []
             call_graph_info = None
 
@@ -186,17 +200,17 @@ class ContextCompiler:
                 for e in errors[:3]:
                     terms.update(re.findall(r"[A-Za-z0-9_]{3,}", e))
 
-            if hasattr(repository_brain, "find_symbol"):
+            if hasattr(repo_target, "find_symbol"):
                 # Prioritize CamelCase / snake_case terms first
                 sorted_terms = sorted(terms, key=lambda t: (bool(re.search(r"[A-Z]", t)), len(t)), reverse=True)
                 for term in sorted_terms:
-                    syms = repository_brain.find_symbol(term)
+                    syms = repo_target.find_symbol(term)
                     if syms:
                         for s in syms:
                             if s not in relevant_symbols:
                                 relevant_symbols.append(s)
-                        if not call_graph_info and hasattr(repository_brain, "get_call_graph"):
-                            call_graph_info = repository_brain.get_call_graph(term)
+                        if not call_graph_info and hasattr(repo_target, "get_call_graph"):
+                            call_graph_info = repo_target.get_call_graph(term)
                     if len(relevant_symbols) >= 8:
                         break
 

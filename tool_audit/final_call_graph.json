@@ -1,0 +1,141 @@
+{
+  "graph_version": "2.0.0",
+  "generated_at": "2026-09-26T20:55:00Z",
+  "nodes": [
+    {
+      "id": "UserRequest",
+      "type": "input",
+      "module": "api.request",
+      "description": "User task objective or bug report"
+    },
+    {
+      "id": "TaskOrchestrator",
+      "type": "coordinator",
+      "module": "agent_orchestrator.orchestrator",
+      "entrypoint": "TaskOrchestrator.run"
+    },
+    {
+      "id": "ConcurrentDAGScheduler",
+      "type": "scheduler",
+      "module": "agent_orchestrator.runtime.dag_scheduler",
+      "entrypoint": "ConcurrentDAGScheduler.execute_ready_wave"
+    },
+    {
+      "id": "SkillResolver",
+      "type": "resolver",
+      "module": "skills.resolver",
+      "entrypoint": "SkillResolver.resolve"
+    },
+    {
+      "id": "SkillRuntime",
+      "type": "runtime",
+      "module": "skills.runtime",
+      "entrypoint": "SkillRuntime.execute"
+    },
+    {
+      "id": "ToolPolicy",
+      "type": "policy",
+      "module": "skills.runtime_policy",
+      "entrypoint": "ToolPolicy.from_capabilities"
+    },
+    {
+      "id": "ContextPolicy",
+      "type": "policy",
+      "module": "skills.runtime_policy",
+      "entrypoint": "ContextRequirements.from_skills"
+    },
+    {
+      "id": "RepositoryBrain",
+      "type": "intelligence",
+      "module": "repository.repository_brain",
+      "entrypoint": "RepositoryBrain.get_workspace_summary"
+    },
+    {
+      "id": "ContextCompiler",
+      "type": "compiler",
+      "module": "context.compiler",
+      "entrypoint": "ContextCompiler.compile"
+    },
+    {
+      "id": "AgentExecutionLoop",
+      "type": "execution_loop",
+      "module": "runtime.agent_loop",
+      "entrypoint": "AgentExecutionLoop.run"
+    },
+    {
+      "id": "LiteLLMGateway",
+      "type": "gateway",
+      "module": "agent_orchestrator.llm",
+      "entrypoint": "LLMClient.chat_with_tools"
+    },
+    {
+      "id": "ToolPolicyEngine",
+      "type": "policy_engine",
+      "module": "runtime.tool_policy",
+      "entrypoint": "ToolPolicyEngine.get_executable_schemas"
+    },
+    {
+      "id": "ToolStateMachine",
+      "type": "state_machine",
+      "module": "runtime.tool_state_machine",
+      "entrypoint": "ToolStateMachine.verify_health"
+    },
+    {
+      "id": "UnifiedToolDispatcher",
+      "type": "dispatcher",
+      "module": "agent_orchestrator.tools.unified_dispatcher",
+      "entrypoint": "UnifiedToolDispatcher.call_tool"
+    },
+    {
+      "id": "ObservationEngine",
+      "type": "normalizer",
+      "module": "runtime.observation_engine",
+      "entrypoint": "ObservationEngine.normalize"
+    },
+    {
+      "id": "ExecutionState",
+      "type": "state",
+      "module": "runtime.execution_state",
+      "entrypoint": "ExecutionState.record_observation"
+    },
+    {
+      "id": "VerificationPipeline",
+      "type": "verification",
+      "module": "ide.verification_pipeline",
+      "entrypoint": "IDEVerificationPipeline.run_lifecycle"
+    },
+    {
+      "id": "RepairPipeline",
+      "type": "repair",
+      "module": "ide.repair_pipeline",
+      "entrypoint": "IDERepairPipeline.handle_failure"
+    },
+    {
+      "id": "ProjectRuntimeManager",
+      "type": "process_manager",
+      "module": "agent_orchestrator.runtime.project_runtime",
+      "entrypoint": "ProjectRuntimeManager.start_process"
+    }
+  ],
+  "edges": [
+    {"from": "UserRequest", "to": "TaskOrchestrator"},
+    {"from": "TaskOrchestrator", "to": "ConcurrentDAGScheduler"},
+    {"from": "ConcurrentDAGScheduler", "to": "SkillResolver"},
+    {"from": "SkillResolver", "to": "SkillRuntime"},
+    {"from": "SkillRuntime", "to": "ToolPolicy"},
+    {"from": "SkillRuntime", "to": "ContextPolicy"},
+    {"from": "ToolPolicy", "to": "RepositoryBrain"},
+    {"from": "ContextPolicy", "to": "RepositoryBrain"},
+    {"from": "RepositoryBrain", "to": "ContextCompiler"},
+    {"from": "ContextCompiler", "to": "AgentExecutionLoop"},
+    {"from": "AgentExecutionLoop", "to": "ToolPolicyEngine"},
+    {"from": "ToolPolicyEngine", "to": "ToolStateMachine"},
+    {"from": "AgentExecutionLoop", "to": "LiteLLMGateway"},
+    {"from": "LiteLLMGateway", "to": "UnifiedToolDispatcher"},
+    {"from": "UnifiedToolDispatcher", "to": "ObservationEngine"},
+    {"from": "ObservationEngine", "to": "ExecutionState"},
+    {"from": "ExecutionState", "to": "VerificationPipeline"},
+    {"from": "VerificationPipeline", "to": "RepairPipeline", "condition": "FAIL"},
+    {"from": "RepairPipeline", "to": "AgentExecutionLoop"}
+  ]
+}

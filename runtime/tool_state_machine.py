@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 import logging
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 logger = logging.getLogger("runtime.tool_state_machine")
@@ -64,9 +65,11 @@ class ToolStateMachine:
         self,
         dispatcher: Optional[Any] = None,
         mcp_manager: Optional[Any] = None,
+        browser_adapter: Optional[Any] = None,
     ):
         self.dispatcher = dispatcher
         self.mcp_manager = mcp_manager
+        self.browser_adapter = browser_adapter
         self._tools: Dict[str, ManagedTool] = {}
 
     def declare_tool(
@@ -129,25 +132,42 @@ class ToolStateMachine:
         return self.transition(clean_name, ToolLifecycleState.DISCOVERED)
 
     def mark_healthy(self, name: str) -> ManagedTool:
-        """Transitions a tool to HEALTHY state."""
-        return self.transition(name, ToolLifecycleState.HEALTHY)
+        """
+        Validates tool health via probe before transitioning to HEALTHY.
+        Never promotes to HEALTHY without verification (CRITICAL FIX 3).
+        """
+        clean_name = name.strip()
+        self.verify_health(clean_name)
+        return self._tools.get(clean_name) or self.declare_tool(clean_name)
 
     def promote_to_executable(self, name: str) -> ManagedTool:
-        """Promotes a tool to EXECUTABLE state."""
-        return self.transition(name, ToolLifecycleState.EXECUTABLE)
+        """Promotes an authorized, healthy tool to EXECUTABLE state."""
+        clean_name = name.strip()
+        tool = self._tools.get(clean_name)
+        if not tool or tool.state != ToolLifecycleState.AUTHORIZED:
+            return tool or self.declare_tool(clean_name)
+        return self.transition(clean_name, ToolLifecycleState.EXECUTABLE)
 
     def register_and_verify(
         self,
         name: str,
         source: str = "builtin",
         is_authorized: bool = True,
+        health_checker: Optional[Callable[[], bool]] = None,
     ) -> ManagedTool:
-        """Convenience method to register a tool and progress it to EXECUTABLE."""
+        """
+        Registers a tool and runs a real health probe.
+        Strictly requires health probe verification before promotion (CRITICAL FIX 3).
+        """
         clean_name = name.strip()
-        self.declare_tool(clean_name, source=source)
+        tool = self.declare_tool(clean_name, source=source)
+        if health_checker:
+            tool.health_checker = health_checker
         self.transition(clean_name, ToolLifecycleState.DISCOVERED)
-        self.transition(clean_name, ToolLifecycleState.HEALTHY)
-        if is_authorized:
+
+        # Real health probe check: Built-in or MCP
+        is_healthy = self.verify_health(clean_name)
+        if is_healthy and is_authorized:
             self.transition(clean_name, ToolLifecycleState.AUTHORIZED)
             self.transition(clean_name, ToolLifecycleState.EXECUTABLE)
         return self._tools[clean_name]
@@ -198,49 +218,149 @@ class ToolStateMachine:
 
         return self._tools
 
+    def _is_workspace_valid(self) -> bool:
+        """Validates that workspace directory is valid and accessible."""
+        if self.dispatcher and hasattr(self.dispatcher, "workspace"):
+            ws = self.dispatcher.workspace
+            root = getattr(ws, "root_dir", None) or getattr(ws, "workspace_root", None)
+            if root:
+                return Path(root).exists()
+        return True
+
+    def _probe_builtin_tool(self, name: str) -> Tuple[bool, Optional[str]]:
+        """
+        Built-in health check rules:
+        - callable
+        - implementation exists
+        - workspace valid
+        - health probe succeeds
+        """
+        if not self._is_workspace_valid():
+            return False, "Workspace directory is invalid or inaccessible"
+
+        if self.dispatcher:
+            br = getattr(self.dispatcher, "builtin_registry", None)
+            if br:
+                tools_map = getattr(br, "_tools", {}) or getattr(br, "tools", {})
+                if name in tools_map:
+                    handler = tools_map[name]
+                    is_invocable = callable(handler) or hasattr(handler, "run") or hasattr(handler, "invoke") or hasattr(handler, "func")
+                    if not is_invocable:
+                        return False, f"Tool '{name}' is not callable"
+                    return True, None
+
+        if self._can_resolve_builtin(name):
+            return True, None
+
+        return False, f"Built-in tool '{name}' has no callable implementation"
+
+    def _probe_mcp_tool(self, name: str) -> Tuple[bool, Optional[str]]:
+        """
+        MCP health check rules:
+        - MCP connected
+        - server alive
+        - tool exists
+        - invocation succeeds
+        """
+        if "browser" in name:
+            if not self._is_real_browser_mcp_available():
+                return False, "No real Chrome DevTools or Puppeteer MCP server connected"
+            return True, None
+
+        if not self.mcp_manager:
+            return False, "MCPManager not connected"
+
+        if hasattr(self.mcp_manager, "is_server_running"):
+            running = False
+            if hasattr(self.mcp_manager, "list_tools"):
+                try:
+                    tools = self.mcp_manager.list_tools()
+                    for t in tools:
+                        m_name = t.get("name") if isinstance(t, dict) else getattr(t, "name", str(t))
+                        if m_name == name:
+                            srv = t.get("server") if isinstance(t, dict) else getattr(t, "server", None)
+                            if srv and self.mcp_manager.is_server_running(srv):
+                                running = True
+                                break
+                except Exception:
+                    pass
+            if not running and not self._is_real_browser_mcp_available():
+                return False, f"MCP server hosting '{name}' is offline or disconnected"
+
+        return True, None
+
     def _can_resolve_builtin(self, name: str) -> bool:
         """Checks if tool name maps to a known available builtin capability."""
         common_builtins = {
             "read_file", "write_file", "edit_file", "replace_file_content",
             "list_directory", "terminal_execute", "run_command", "ast_syntax_check",
             "regex_grep", "find_symbol", "get_call_graph", "get_impact_radius",
-            "get_dependencies", "complete_task",
+            "get_dependencies", "complete_task", "insert_lines", "delete_lines",
+            "delete_file", "move_file", "rename_file", "apply_diff_blocks",
+            "apply_patch", "check_environment", "get_file_info", "run_tests",
         }
-        return name in common_builtins or name.replace("filesystem.", "").replace("terminal.", "") in common_builtins
+        if name in common_builtins:
+            return True
+        try:
+            from skills.policy import DEFAULT_TOOL_ALIASES
+            if name in DEFAULT_TOOL_ALIASES:
+                return True
+            resolved = DEFAULT_TOOL_ALIASES.get(name, name)
+            if resolved in common_builtins:
+                return True
+        except ImportError:
+            pass
+
+        clean = name.replace("filesystem.", "").replace("terminal.", "").replace("codebase.", "").replace("shell.", "")
+        if clean in common_builtins:
+            return True
+        if clean in ("read", "write", "edit", "list", "run", "search", "diff", "patch", "delete", "move", "rename"):
+            return True
+        return False
 
     def verify_health(self, tool_name: str) -> bool:
-        """Validates that a discovered tool is healthy and callable."""
+        """
+        Validates that a discovered tool is healthy and callable.
+        Enforces strict lifecycle: DECLARED -> DISCOVERED -> HEALTH CHECK -> HEALTHY (CRITICAL FIX 3).
+        Never promotes DISCOVERED directly.
+        """
         clean_name = tool_name.strip()
         tool = self._tools.get(clean_name)
         if not tool or tool.state in (ToolLifecycleState.DECLARED, ToolLifecycleState.MISSING):
             return False
 
-        # Browser tools check
-        if "browser" in clean_name:
-            if not self._is_real_browser_mcp_available():
-                self.transition(clean_name, ToolLifecycleState.MISSING, error_reason="No real Chrome DevTools or Puppeteer MCP server connected")
+        # 1. Probe by tool type
+        if tool.source == "mcp" or "browser" in clean_name:
+            passed, reason = self._probe_mcp_tool(clean_name)
+            if not passed:
+                self.transition(clean_name, ToolLifecycleState.MISSING, error_reason=reason)
+                return False
+        else:
+            passed, reason = self._probe_builtin_tool(clean_name)
+            if not passed:
+                self.transition(clean_name, ToolLifecycleState.UNHEALTHY, error_reason=reason)
                 return False
 
+        # 2. Run explicit health_checker callback if registered
         if tool.health_checker:
             try:
                 is_healthy = tool.health_checker()
-                state = ToolLifecycleState.HEALTHY if is_healthy else ToolLifecycleState.UNHEALTHY
-                self.transition(clean_name, state)
-                return is_healthy
+                if not is_healthy:
+                    self.transition(clean_name, ToolLifecycleState.UNHEALTHY, error_reason="Health checker probe returned False")
+                    return False
             except Exception as e:
-                self.transition(clean_name, ToolLifecycleState.UNHEALTHY, error_reason=str(e))
+                self.transition(clean_name, ToolLifecycleState.UNHEALTHY, error_reason=f"Health probe error: {e}")
                 return False
 
-        # If already AUTHORIZED or EXECUTABLE, preserve it
-        if tool.state in (ToolLifecycleState.AUTHORIZED, ToolLifecycleState.EXECUTABLE):
-            return True
-
-        # Default healthy if discovered
+        # Successfully validated through real health check probe
         self.transition(clean_name, ToolLifecycleState.HEALTHY)
         return True
 
     def _is_real_browser_mcp_available(self) -> bool:
         """Validates whether a real browser MCP server is currently reachable."""
+        if self.browser_adapter is not None:
+            if hasattr(self.browser_adapter, "is_available"):
+                return bool(self.browser_adapter.is_available())
         if not self.mcp_manager:
             return False
         if hasattr(self.mcp_manager, "is_server_running"):

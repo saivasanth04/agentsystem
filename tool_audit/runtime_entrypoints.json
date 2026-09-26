@@ -1,0 +1,67 @@
+{
+  "runtime_entrypoints": [
+    {
+      "name": "TaskOrchestrator.run",
+      "module": "agent_orchestrator.orchestrator",
+      "authoritative": true,
+      "role": "Top-level graph orchestrator for multi-agent DAG execution",
+      "delegates_to": "ConcurrentDAGScheduler.execute_ready_wave"
+    },
+    {
+      "name": "ConcurrentDAGScheduler.execute_ready_wave",
+      "module": "agent_orchestrator.runtime.dag_scheduler",
+      "authoritative": true,
+      "role": "Dependency wave coordination and parallel task dispatch",
+      "delegates_to": "SkillResolver.resolve -> SkillRuntime.execute -> AgentExecutionLoop"
+    },
+    {
+      "name": "SkillRuntime.execute",
+      "module": "skills.runtime",
+      "authoritative": true,
+      "role": "Exclusive execution authority for capability skills",
+      "delegates_to": "AgentExecutionLoop.run"
+    },
+    {
+      "name": "AgentExecutionLoop.run",
+      "module": "runtime.agent_loop",
+      "authoritative": true,
+      "role": "Authoritative ReAct execution loop (Reason -> Action -> Observation -> Rebuild)",
+      "delegates_to": "LiteLLM Gateway + UnifiedToolDispatcher"
+    },
+    {
+      "name": "ProductionIDE.run_task",
+      "module": "ide.production_ide",
+      "authoritative": true,
+      "role": "Application Service Layer facade exposing IDE capabilities to APIs and UI",
+      "delegates_to": "TaskOrchestrator + AgentExecutionLoop"
+    },
+    {
+      "name": "ReActAgentLoop.run",
+      "module": "agent_orchestrator.runtime.react_loop",
+      "authoritative": false,
+      "role": "Backward-compatible delegation shim",
+      "delegates_to": "AgentExecutionLoop.run"
+    },
+    {
+      "name": "BaseAgent.execute",
+      "module": "agent_orchestrator.agents.base",
+      "authoritative": false,
+      "role": "Legacy persona entrypoint",
+      "delegates_to": "SkillRuntime.execute / AgentExecutionLoop.run"
+    },
+    {
+      "name": "IDEVerificationPipeline.run_lifecycle",
+      "module": "ide.verification_pipeline",
+      "authoritative": true,
+      "role": "Authoritative verification gate (Edit -> Build -> Lint -> Tests -> Security -> Review -> PASS)",
+      "delegates_to": "Subprocess CLI runners"
+    },
+    {
+      "name": "IDERepairPipeline.handle_failure",
+      "module": "ide.repair_pipeline",
+      "authoritative": true,
+      "role": "Closed-loop failure repair (Failure -> Observation -> Brain -> Context -> Replanner -> Repair)",
+      "delegates_to": "ContextCompiler + EpistemicReplanner + AgentExecutionLoop"
+    }
+  ]
+}

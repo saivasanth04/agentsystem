@@ -615,33 +615,57 @@ async def dry_run_task(req: DryRunRequest):
             "running_tasks": 0,
         }
 
-        # Estimate tokens and cost dynamically from matched files and subtasks (Fix 12)
-        total_tokens = 0
+        # Dynamically estimate tokens and cost (PARTIAL FIX 6)
+        from agent_orchestrator.routing.model_router import model_router
+        from agent_orchestrator.cost.cost_engine import cost_engine
+        
+        selected_model = req.model or getattr(orch_config, "default_model", "gpt-4o") if "orch_config" in globals() else (req.model or "gpt-4o")
+        resolved_model = model_router.resolve_model(selected_model) if hasattr(model_router, "resolve_model") else str(selected_model)
+
+        total_retrieved_file_tokens = 0
         for fp in matched_files:
             p = ws_dir / fp
             if p.is_file():
                 try:
-                    total_tokens += len(p.read_text(encoding="utf-8", errors="ignore")) // 4
+                    total_retrieved_file_tokens += len(p.read_text(encoding="utf-8", errors="ignore")) // 4
                 except Exception:
                     pass
-        prompt_overhead = len(nodes) * 500
-        total_estimated_tokens = total_tokens + prompt_overhead
 
-        if total_estimated_tokens > 0:
-            estimated_cost_usd = round((total_estimated_tokens / 1000) * 0.005, 5)
+        # Estimate expected tool calls and subtask prompt overhead
+        expected_tool_calls = sum(len(n.get("tools", [])) for n in nodes)
+        repo_complexity_factor = 1.0 + (min(len(matched_symbols), 50) * 0.02)
+        base_prompt_tokens = len(nodes) * 600
+
+        total_estimated_tokens = int((total_retrieved_file_tokens + base_prompt_tokens + (expected_tool_calls * 150)) * repo_complexity_factor)
+
+        if total_estimated_tokens > 0 and (matched_files or matched_symbols or req.user_request):
+            prompt_tok = int(total_estimated_tokens * 0.75)
+            comp_tok = int(total_estimated_tokens * 0.25)
+            estimated_cost = cost_engine.calculate_llm_cost(
+                model=resolved_model,
+                prompt_tokens=prompt_tok,
+                completion_tokens=comp_tok,
+            )
+            estimated_cost_usd = round(estimated_cost, 5) if estimated_cost > 0 else round((total_estimated_tokens / 1000) * 0.005, 5)
             estimate_available = True
         else:
             total_estimated_tokens = None
             estimated_cost_usd = None
             estimate_available = False
 
-        return {
+        res_payload = {
             "success": True,
             "dag": dag_snapshot,
             "estimate_available": estimate_available,
-            "estimated_cost_usd": estimated_cost_usd,
-            "estimated_tokens": total_estimated_tokens,
         }
+        if estimate_available:
+            res_payload["estimated_cost_usd"] = estimated_cost_usd
+            res_payload["estimated_tokens"] = total_estimated_tokens
+            res_payload["model"] = resolved_model
+            res_payload["retrieved_files_count"] = len(matched_files)
+            res_payload["expected_tool_calls"] = expected_tool_calls
+
+        return res_payload
     except Exception as e:
         logger.error(f"Dry run error: {e}")
         return JSONResponse(status_code=400, content={"success": False, "error": str(e), "traceback": traceback.format_exc()})

@@ -294,8 +294,27 @@ class CoderAgent(BaseAgent):
             ),
         ]
 
+        # ContextCompiler is the single final context authority (PARTIAL FIX 1)
+        from context.compiler import ContextCompiler
+        from context.budget import TokenBudget
+        compiler = getattr(self.execution_loop, "context_compiler", None)
+        if compiler is None:
+            compiler = ContextCompiler(
+                workspace_manager=workspace,
+                llm_client=self.llm,
+            )
+        focal_inputs = (task_info.get("inputs", []) or []) + (task_info.get("outputs", []) or [])
+        clean_targets = [inp.split(":")[0].strip() for inp in focal_inputs if inp]
 
-        prompt = assembler.assemble(sections)
+        compiled_package = compiler.compile(
+            task_objective=f"Objective: {task_info.get('objective', state.user_request)}",
+            working_memory=wm_summary,
+            errors=replan_context if replan_context else None,
+            skills=active_skills,
+            target_files=clean_targets,
+            token_budget=TokenBudget(total_budget=8000),
+        )
+        prompt = compiled_package.to_prompt_context()
         system_prompt = self.build_system_prompt(active_skills=active_skills)
         from runtime.tool_policy import ToolPolicyEngine
         executable = ToolPolicyEngine.get_executable_tools(allowed_tools={"write_file", "replace_file_content", "edit_file", "read_file", "list_directory", "ast_syntax_check", "regex_grep", "complete_task"})
